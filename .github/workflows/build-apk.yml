@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,11 +25,12 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
+      - name: Show project files
+        run: |
+          echo "===== PROJECT FILES ====="
+          find . -maxdepth 6 -type f | sort
+          echo "========================="
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DarkCalc-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Build APK
+        run: |
+          gradle assembleDebug --stacktrace --info
