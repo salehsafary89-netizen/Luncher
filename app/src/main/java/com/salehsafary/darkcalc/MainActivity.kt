@@ -18,7 +18,7 @@ fun PageIndicator(
 
         repeat(count) { index ->
 
-            Text(Text(
+            Text(
                 text = if (index == current) {
                     "●"
                 } else {
@@ -389,7 +389,6 @@ fun CalculatorScreen(
     }
 }
 
-
 /* =========================================================
    CALCULATOR ENGINE
    ========================================================= */
@@ -441,6 +440,7 @@ fun calculateSimple(
                 if (second == 0.0) {
                     return "خطا"
                 }
+
                 first / second
             }
 
@@ -803,13 +803,7 @@ fun ResetPasswordScreen(
                     MaterialTheme
                         .colorScheme
                         .error
-            )
-        }
-    }
-}
-
-
-/* =========================================================
+            )/* =========================================================
    HIDDEN APPS
    ========================================================= */
 
@@ -904,3 +898,7 @@ fun HiddenAppsScreen(
         }
     }
 }
+        }
+    }
+}
+
