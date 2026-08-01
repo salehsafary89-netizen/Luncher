@@ -25,12 +25,27 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Show project files
+      - name: Show project structure
         run: |
           echo "===== PROJECT FILES ====="
-          find . -maxdepth 6 -type f | sort
+          find . -maxdepth 8 -type f | sort
           echo "========================="
 
-      - name: Build APK
+      - name: Build
         run: |
-          gradle assembleDebug --stacktrace --info
+          set -o pipefail
+          gradle assembleDebug --stacktrace --info 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCalc-build-log
+          path: build.log
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DarkCalc-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
