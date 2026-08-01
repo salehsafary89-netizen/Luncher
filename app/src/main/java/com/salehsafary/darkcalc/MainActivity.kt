@@ -64,18 +64,18 @@ data class InstalledApp(
 
 enum class LauncherScreen {
     HOME,
-    APP_DRAWER,
+    DRAWER,
     CALCULATOR,
     LOGIN,
-    RESET_PASSWORD,
-    HIDDEN_APPS
+    RESET,
+    HIDDEN
 }
 
 
-private const val AUTH_PREFS = "darkcalc_auth"
-private const val PASSWORD_HASH = "password_hash"
+private const val PREFS_NAME = "darkcalc_auth"
+private const val PASSWORD_KEY = "password_hash"
 
-private const val ADMIN_USERNAME = "admin"
+private const val USERNAME = "admin"
 private const val DEFAULT_PASSWORD = "123456789"
 
 private const val SECRET_CODE = "2580"
@@ -98,8 +98,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+
             DarkCalcTheme {
-                DarkCalcLauncher(
+
+                DarkCalcApp(
                     activity = this
                 )
             }
@@ -107,75 +109,70 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    /*
+     * برنامه‌های قابل اجرا
+     *
+     * Telegram عمداً از این لیست حذف می‌شود.
+     */
     fun getInstalledApps(): List<InstalledApp> {
 
         val pm = packageManager
 
-        val result =
-            mutableListOf<InstalledApp>()
-
-        val installedApplications =
-            pm.getInstalledApplications(
+        return pm
+            .getInstalledApplications(
                 PackageManager.GET_META_DATA
             )
+            .asSequence()
+            .filter { appInfo ->
 
-        for (appInfo in installedApplications) {
-
-            val launchIntent =
                 pm.getLaunchIntentForPackage(
                     appInfo.packageName
-                )
-
-            if (launchIntent == null) {
-                continue
+                ) != null
             }
+            .filter { appInfo ->
 
-            if (
-                appInfo.packageName ==
-                packageName
-            ) {
-                continue
+                appInfo.packageName != packageName
             }
+            .filter { appInfo ->
 
-            if (
-                appInfo.packageName ==
-                TELEGRAM_PACKAGE
-            ) {
-                continue
+                appInfo.packageName !=
+                    TELEGRAM_PACKAGE
             }
+            .map { appInfo ->
 
-            val label =
-                pm.getApplicationLabel(
-                    appInfo
-                ).toString()
-
-            val icon =
-                drawableToBitmap(
-                    appInfo.loadIcon(pm)
-                )
-
-            result.add(
                 InstalledApp(
-                    label = label,
+                    label =
+                        pm.getApplicationLabel(
+                            appInfo
+                        ).toString(),
+
                     packageName =
                         appInfo.packageName,
-                    icon = icon
-                )
-            )
-        }
 
-        return result
+                    icon =
+                        drawableToBitmap(
+                            appInfo.loadIcon(pm)
+                        )
+                )
+            }
             .distinctBy { app ->
+
                 app.packageName
             }
             .sortedBy { app ->
+
                 app.label.lowercase(
                     Locale.getDefault()
                 )
             }
+            .toList()
     }
 
 
+    /*
+     * فقط برنامه‌هایی که در بخش مخفی
+     * باید نمایش داده شوند.
+     */
     fun getHiddenApps(): List<InstalledApp> {
 
         val pm = packageManager
@@ -185,7 +182,7 @@ class MainActivity : ComponentActivity() {
 
         try {
 
-            val appInfo =
+            val info =
                 pm.getApplicationInfo(
                     TELEGRAM_PACKAGE,
                     PackageManager.GET_META_DATA
@@ -202,7 +199,7 @@ class MainActivity : ComponentActivity() {
                     InstalledApp(
                         label =
                             pm.getApplicationLabel(
-                                appInfo
+                                info
                             ).toString(),
 
                         packageName =
@@ -210,7 +207,7 @@ class MainActivity : ComponentActivity() {
 
                         icon =
                             drawableToBitmap(
-                                appInfo.loadIcon(pm)
+                                info.loadIcon(pm)
                             )
                     )
                 )
@@ -219,22 +216,25 @@ class MainActivity : ComponentActivity() {
         } catch (
             _: PackageManager.NameNotFoundException
         ) {
+            // Telegram نصب نیست.
         }
 
         return result
     }
 
 
-    fun launchApp(
+    fun launchPackage(
         packageName: String
     ) {
 
         val intent =
-            packageManager.getLaunchIntentForPackage(
-                packageName
-            )
+            packageManager
+                .getLaunchIntentForPackage(
+                    packageName
+                )
 
         if (intent != null) {
+
             startActivity(intent)
         }
     }
@@ -291,29 +291,35 @@ class MainActivity : ComponentActivity() {
     ): Boolean {
 
         if (
-            username != ADMIN_USERNAME
+            username != USERNAME
         ) {
             return false
         }
 
         val prefs =
             getSharedPreferences(
-                AUTH_PREFS,
+                PREFS_NAME,
                 Context.MODE_PRIVATE
             )
 
         val savedHash =
             prefs.getString(
-                PASSWORD_HASH,
+                PASSWORD_KEY,
                 null
             )
 
+        /*
+         * اولین ورود:
+         * رمز اولیه 123456789
+         */
         if (savedHash == null) {
-            return password == DEFAULT_PASSWORD
+
+            return password ==
+                DEFAULT_PASSWORD
         }
 
         return sha256(password) ==
-                savedHash
+            savedHash
     }
 
 
@@ -322,12 +328,12 @@ class MainActivity : ComponentActivity() {
     ) {
 
         getSharedPreferences(
-            AUTH_PREFS,
+            PREFS_NAME,
             Context.MODE_PRIVATE
         )
             .edit()
             .putString(
-                PASSWORD_HASH,
+                PASSWORD_KEY,
                 sha256(newPassword)
             )
             .apply()
@@ -339,15 +345,15 @@ class MainActivity : ComponentActivity() {
     ): Boolean {
 
         return normalizeText(answer) ==
-                normalizeText(SECURITY_ANSWER)
+            normalizeText(SECURITY_ANSWER)
     }
 
 
     private fun normalizeText(
-        text: String
+        value: String
     ): String {
 
-        return text
+        return value
             .trim()
             .replace("ي", "ی")
             .replace("ك", "ک")
@@ -362,7 +368,7 @@ class MainActivity : ComponentActivity() {
         value: String
     ): String {
 
-        val digest =
+        val bytes =
             MessageDigest
                 .getInstance("SHA-256")
                 .digest(
@@ -371,38 +377,40 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-        return digest.joinToString("") {
+        return bytes.joinToString("") {
             "%02x".format(it)
         }
     }
 }
 
 
-/* =========================
-   MAIN LAUNCHER
-   ========================= */
+/* =========================================================
+   ROOT
+   ========================================================= */
 
 @Composable
-fun DarkCalcLauncher(
+fun DarkCalcApp(
     activity: MainActivity
 ) {
+
+    var screen by remember {
+
+        mutableStateOf(
+            LauncherScreen.HOME
+        )
+    }
 
     val apps =
         remember {
             activity.getInstalledApps()
         }
 
-    var screen by remember {
-        mutableStateOf(
-            LauncherScreen.HOME
-        )
-    }
-
     val calculator =
         remember {
 
             InstalledApp(
                 label = "ماشین حساب",
+
                 packageName =
                     "darkcalc.calculator",
 
@@ -417,6 +425,7 @@ fun DarkCalcLauncher(
                 isCalculator = true
             )
         }
+
 
     Surface(
         modifier =
@@ -436,10 +445,8 @@ fun DarkCalcLauncher(
                     apps = apps,
                     calculator = calculator,
 
-                    onLaunch = { packageName ->
-                        activity.launchApp(
-                            packageName
-                        )
+                    onLaunch = {
+                        activity.launchPackage(it)
                     },
 
                     onCalculator = {
@@ -449,22 +456,20 @@ fun DarkCalcLauncher(
 
                     onDrawer = {
                         screen =
-                            LauncherScreen.APP_DRAWER
+                            LauncherScreen.DRAWER
                     }
                 )
             }
 
 
-            LauncherScreen.APP_DRAWER -> {
+            LauncherScreen.DRAWER -> {
 
                 AppDrawer(
                     apps = apps,
                     calculator = calculator,
 
-                    onLaunch = { packageName ->
-                        activity.launchApp(
-                            packageName
-                        )
+                    onLaunch = {
+                        activity.launchPackage(it)
                     },
 
                     onCalculator = {
@@ -510,18 +515,18 @@ fun DarkCalcLauncher(
 
                     onSuccess = {
                         screen =
-                            LauncherScreen.HIDDEN_APPS
+                            LauncherScreen.HIDDEN
                     },
 
                     onReset = {
                         screen =
-                            LauncherScreen.RESET_PASSWORD
+                            LauncherScreen.RESET
                     }
                 )
             }
 
 
-            LauncherScreen.RESET_PASSWORD -> {
+            LauncherScreen.RESET -> {
 
                 ResetPasswordScreen(
 
@@ -540,7 +545,7 @@ fun DarkCalcLauncher(
             }
 
 
-            LauncherScreen.HIDDEN_APPS -> {
+            LauncherScreen.HIDDEN -> {
 
                 val hiddenApps =
                     remember {
@@ -549,13 +554,10 @@ fun DarkCalcLauncher(
 
                 HiddenAppsScreen(
 
-                    apps =
-                        hiddenApps,
+                    apps = hiddenApps,
 
-                    onLaunch = { packageName ->
-                        activity.launchApp(
-                            packageName
-                        )
+                    onLaunch = {
+                        activity.launchPackage(it)
                     },
 
                     onBack = {
@@ -569,9 +571,9 @@ fun DarkCalcLauncher(
 }
 
 
-/* =========================
-   HOME SCREEN
-   ========================= */
+/* =========================================================
+   HOME
+   ========================================================= */
 
 @Composable
 fun HomeScreen(
@@ -587,14 +589,18 @@ fun HomeScreen(
 
     val pages =
         if (allApps.isEmpty()) {
+
             listOf(emptyList())
+
         } else {
+
             allApps.chunked(20)
         }
 
-    var page by remember {
+    var currentPage by remember {
         mutableStateOf(0)
     }
+
 
     Column(
         modifier =
@@ -604,13 +610,13 @@ fun HomeScreen(
         Box(
             modifier =
                 Modifier
-                    .weight(1f)
                     .fillMaxWidth()
+                    .weight(1f)
                     .pointerInput(
                         pages.size
                     ) {
 
-                        var drag = 0f
+                        var dragAmount = 0f
 
                         detectHorizontalDragGestures(
 
@@ -620,26 +626,30 @@ fun HomeScreen(
 
                                 change.consume()
 
-                                drag += amount
+                                dragAmount +=
+                                    amount
                             },
 
                             onDragEnd = {
 
                                 if (
-                                    drag < -100 &&
-                                    page < pages.lastIndex
+                                    dragAmount < -100 &&
+                                    currentPage <
+                                    pages.lastIndex
                                 ) {
-                                    page++
+
+                                    currentPage++
                                 }
 
                                 if (
-                                    drag > 100 &&
-                                    page > 0
+                                    dragAmount > 100 &&
+                                    currentPage > 0
                                 ) {
-                                    page--
+
+                                    currentPage--
                                 }
 
-                                drag = 0f
+                                dragAmount = 0f
                             }
                         )
                     }
@@ -661,6 +671,7 @@ fun HomeScreen(
                         Modifier.height(20.dp)
                 )
 
+
                 LazyVerticalGrid(
                     columns =
                         GridCells.Fixed(4),
@@ -673,7 +684,7 @@ fun HomeScreen(
                 ) {
 
                     items(
-                        pages[page],
+                        pages[currentPage],
                         key = { app ->
                             app.packageName
                         }
@@ -681,13 +692,17 @@ fun HomeScreen(
 
                         AppIcon(
                             app = app,
+
                             onClick = {
 
                                 if (
                                     app.isCalculator
                                 ) {
+
                                     onCalculator()
+
                                 } else {
+
                                     onLaunch(
                                         app.packageName
                                     )
@@ -701,11 +716,11 @@ fun HomeScreen(
 
 
         PageIndicator(
-            pageCount =
+            count =
                 pages.size,
 
-            currentPage =
-                page
+            current =
+                currentPage
         )
 
 
@@ -720,19 +735,17 @@ fun HomeScreen(
 }
 
 
-/* =========================
+/* =========================================================
    PAGE INDICATOR
-   ========================= */
+   ========================================================= */
 
 @Composable
 fun PageIndicator(
-    pageCount: Int,
-    currentPage: Int
+    count: Int,
+    current: Int
 ) {
 
-    if (
-        pageCount <= 1
-    ) {
+    if (count <= 1) {
         return
     }
 
@@ -744,12 +757,12 @@ fun PageIndicator(
             Arrangement.Center
     ) {
 
-        repeat(pageCount) { index ->
+        repeat(count) { index ->
 
             Text(
                 text =
                     if (
-                        index == currentPage
+                        index == current
                     ) {
                         "●"
                     } else {
@@ -766,17 +779,12 @@ fun PageIndicator(
             )
         }
     }
-
-    Spacer(
-        modifier =
-            Modifier.height(5.dp)
-    )
 }
 
 
-/* =========================
+/* =========================================================
    CLOCK
-   ========================= */
+   ========================================================= */
 
 @Composable
 fun LiveClock() {
@@ -803,15 +811,18 @@ fun LiveClock() {
 
     Text(
         text = time,
+
         fontSize = 48.sp,
-        fontWeight = FontWeight.Light
+
+        fontWeight =
+            FontWeight.Light
     )
 }
 
 
-/* =========================
+/* =========================================================
    DATE
-   ========================= */
+   ========================================================= */
 
 @Composable
 fun LiveDate() {
@@ -838,14 +849,15 @@ fun LiveDate() {
 
     Text(
         text = date,
+
         fontSize = 14.sp
     )
 }
 
 
-/* =========================
+/* =========================================================
    APP ICON
-   ========================= */
+   ========================================================= */
 
 @Composable
 fun AppIcon(
@@ -895,16 +907,4 @@ fun AppIcon(
 }
 
 
-/* =========================
-   DOCK
-   ========================= */
-
-@Composable
-fun Dock(
-    onDrawer: () -> Unit,
-    onCalculator: () -> Unit
-) {
-
-    Row(
-        modifier =
-            Modifier
+/* ======
