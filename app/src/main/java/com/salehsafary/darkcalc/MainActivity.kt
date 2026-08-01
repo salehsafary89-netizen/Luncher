@@ -6,6 +6,9 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
@@ -31,8 +35,13 @@ import java.util.Locale
 
 private const val CALCULATOR_CODE = "2580"
 private const val LOGIN_USERNAME = "Saleh Safari"
-private const val LOGIN_PASSWORD = "123456789"
-private const val SECURITY_ANSWER = "آقای سعیدی"
+private const val DEFAULT_LOGIN_PASSWORD = "123456789"
+private const val SECURITY_ANSWER = "آقای ساعدی"
+
+private val DarkBackground = Color.Black
+private val DarkSurface = Color(0xFF151515)
+private val DarkSurface2 = Color(0xFF202020)
+private val Orange = Color(0xFFFF9800)
 
 data class InstalledApp(
     val packageName: String,
@@ -52,7 +61,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             DarkCalcApp(
                 apps = apps,
-                onLaunch = { launchApp(it) }
+                onLaunch = { packageName ->
+                    launchApp(packageName)
+                }
             )
         }
     }
@@ -60,25 +71,34 @@ class MainActivity : ComponentActivity() {
     private fun loadApps() {
         val pm = packageManager
 
-        val list = pm.getInstalledApplications(
-            PackageManager.GET_META_DATA
-        )
-            .filter {
-                pm.getLaunchIntentForPackage(it.packageName) != null
+        val loadedApps = pm
+            .getInstalledApplications(
+                PackageManager.GET_META_DATA
+            )
+            .filter { app ->
+                app.packageName != packageName &&
+                    pm.getLaunchIntentForPackage(
+                        app.packageName
+                    ) != null
             }
-            .map {
+            .map { app ->
                 InstalledApp(
-                    packageName = it.packageName,
-                    label = pm.getApplicationLabel(it).toString(),
-                    icon = pm.getApplicationIcon(it.packageName)
+                    packageName = app.packageName,
+                    label = pm
+                        .getApplicationLabel(app)
+                        .toString(),
+                    icon = pm
+                        .getApplicationIcon(
+                            app.packageName
+                        )
                 )
             }
             .sortedBy {
-                it.label.lowercase()
+                it.label.lowercase(Locale.getDefault())
             }
 
         apps.clear()
-        apps.addAll(list)
+        apps.addAll(loadedApps)
     }
 
     private fun launchApp(packageName: String) {
@@ -86,6 +106,7 @@ class MainActivity : ComponentActivity() {
             .getLaunchIntentForPackage(packageName)
 
         if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         }
     }
@@ -100,64 +121,84 @@ fun DarkCalcApp(
         mutableStateOf("home")
     }
 
+    var loginPassword by remember {
+        mutableStateOf(DEFAULT_LOGIN_PASSWORD)
+    }
+
     MaterialTheme(
         colorScheme = darkColorScheme(
-            background = Color.Black,
-            surface = Color(0xFF101010),
+            background = DarkBackground,
+            surface = DarkSurface,
             onBackground = Color.White,
-            onSurface = Color.White
+            onSurface = Color.White,
+            primary = Orange
         )
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color.Black
+            color = DarkBackground
         ) {
-            when (screen) {
-
-                "home" -> {
-                    HomeScreen(
-                        apps = apps,
-                        onLaunch = onLaunch,
-                        onCalculator = {
-                            screen = "calculator"
-                        }
+            AnimatedContent(
+                targetState = screen,
+                transitionSpec = {
+                    fadeIn(
+                        animationSpec = tween(180)
+                    ) togetherWith fadeOut(
+                        animationSpec = tween(120)
                     )
-                }
+                },
+                label = "screen_transition"
+            ) { currentScreen ->
 
-                "calculator" -> {
-                    CalculatorScreen(
-                        onBack = {
-                            screen = "home"
-                        },
-                        onCodeCorrect = {
-                            screen = "login"
-                        }
-                    )
-                }
+                when (currentScreen) {
 
-                "login" -> {
-                    LoginScreen(
-                        onBack = {
-                            screen = "calculator"
-                        },
-                        onSuccess = {
-                            screen = "home"
-                        },
-                        onReset = {
-                            screen = "reset"
-                        }
-                    )
-                }
+                    "home" -> {
+                        HomeScreen(
+                            apps = apps,
+                            onLaunch = onLaunch,
+                            onCalculator = {
+                                screen = "calculator"
+                            }
+                        )
+                    }
 
-                "reset" -> {
-                    ResetScreen(
-                        onBack = {
-                            screen = "login"
-                        },
-                        onDone = {
-                            screen = "login"
-                        }
-                    )
+                    "calculator" -> {
+                        CalculatorScreen(
+                            onBack = {
+                                screen = "home"
+                            },
+                            onCodeCorrect = {
+                                screen = "login"
+                            }
+                        )
+                    }
+
+                    "login" -> {
+                        LoginScreen(
+                            currentPassword = loginPassword,
+                            onBack = {
+                                screen = "calculator"
+                            },
+                            onSuccess = {
+                                screen = "home"
+                            },
+                            onReset = {
+                                screen = "reset"
+                            }
+                        )
+                    }
+
+                    "reset" -> {
+                        ResetScreen(
+                            onBack = {
+                                screen = "login"
+                            },
+                            onDone = { newPassword ->
+                                loginPassword = newPassword
+                                screen = "login"
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -170,60 +211,75 @@ fun HomeScreen(
     onLaunch: (String) -> Unit,
     onCalculator: () -> Unit
 ) {
-    val visibleApps = apps
-        .filter {
+    val visibleApps = remember(apps) {
+        apps.filter {
             it.packageName != "com.salehsafary.darkcalc"
         }
-        .take(20)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(14.dp)
+            .background(DarkBackground)
+            .padding(
+                horizontal = 12.dp,
+                vertical = 10.dp
+            )
     ) {
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+            verticalArrangement =
+                Arrangement.Center
         ) {
             LiveClock()
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier = Modifier.height(7.dp)
             )
 
             LiveDate()
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier.weight(2f),
+            columns = GridCells.Fixed(5),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(2f),
             horizontalArrangement =
-                Arrangement.spacedBy(10.dp),
+                Arrangement.spacedBy(7.dp),
             verticalArrangement =
-                Arrangement.spacedBy(18.dp),
+                Arrangement.spacedBy(16.dp),
             contentPadding =
-                PaddingValues(8.dp)
+                PaddingValues(
+                    horizontal = 3.dp,
+                    vertical = 8.dp
+                )
         ) {
 
             item {
-                AppIcon(
-                    label = "ماشین حساب",
-                    icon = null,
+                CalculatorAppIcon(
                     onClick = onCalculator
                 )
             }
 
-            items(visibleApps) { app ->
+            items(
+                items = visibleApps,
+                key = {
+                    it.packageName
+                }
+            ) { app ->
 
                 AppIcon(
-                    label = app.label,
-                    icon = app.icon,
+                    app = app,
                     onClick = {
-                        onLaunch(app.packageName)
+                        onLaunch(
+                            app.packageName
+                        )
                     }
                 )
             }
@@ -239,6 +295,7 @@ fun LiveClock() {
 
     LaunchedEffect(Unit) {
         while (true) {
+
             time = SimpleDateFormat(
                 "HH:mm",
                 Locale.getDefault()
@@ -263,6 +320,7 @@ fun LiveDate() {
 
     LaunchedEffect(Unit) {
         while (true) {
+
             date = SimpleDateFormat(
                 "EEEE، d MMMM",
                 Locale("fa")
@@ -281,8 +339,7 @@ fun LiveDate() {
 
 @Composable
 fun AppIcon(
-    label: String,
-    icon: Drawable?,
+    app: InstalledApp,
     onClick: () -> Unit
 ) {
     Column(
@@ -297,37 +354,89 @@ fun AppIcon(
 
         Box(
             modifier = Modifier
-                .size(68.dp)
+                .size(62.dp)
                 .clip(
-                    RoundedCornerShape(18.dp)
+                    RoundedCornerShape(17.dp)
                 )
                 .background(
-                    Color(0xFF202020)
+                    DarkSurface2
                 ),
             contentAlignment =
                 Alignment.Center
         ) {
 
-            if (icon != null) {
+            Image(
+                bitmap = app.icon
+                    .toBitmap(
+                        width = 128,
+                        height = 128
+                    )
+                    .asImageBitmap(),
+                contentDescription =
+                    app.label,
+                modifier = Modifier.size(52.dp)
+            )
+        }
 
-                Image(
-                    bitmap = icon
-                        .toBitmap(
-                            width = 128,
-                            height = 128
-                        )
-                        .asImageBitmap(),
-                    contentDescription = label,
-                    modifier = Modifier
-                        .size(54.dp)
+        Spacer(
+            modifier = Modifier.height(5.dp)
+        )
+
+        Text(
+            text = app.label,
+            color = Color.White,
+            fontSize = 9.sp,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+fun CalculatorAppIcon(
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                onClick()
+            },
+        horizontalAlignment =
+            Alignment.CenterHorizontally
+    ) {
+
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .clip(
+                    RoundedCornerShape(17.dp)
                 )
+                .background(Orange),
+            contentAlignment =
+                Alignment.Center
+        ) {
 
-            } else {
+            Column(
+                horizontalAlignment =
+                    Alignment.CenterHorizontally,
+                verticalArrangement =
+                    Arrangement.Center
+            ) {
 
                 Text(
-                    text = "▣",
+                    text = "+  ×  ÷",
                     color = Color.White,
-                    fontSize = 32.sp
+                    fontSize = 13.sp
+                )
+
+                Spacer(
+                    modifier = Modifier.height(3.dp)
+                )
+
+                Text(
+                    text = "▰",
+                    color = Color.White,
+                    fontSize = 19.sp
                 )
             }
         }
@@ -337,9 +446,9 @@ fun AppIcon(
         )
 
         Text(
-            text = label,
+            text = "ماشین حساب",
             color = Color.White,
-            fontSize = 10.sp,
+            fontSize = 9.sp,
             maxLines = 1
         )
     }
@@ -364,6 +473,7 @@ fun CalculatorScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(DarkBackground)
             .padding(14.dp)
     ) {
 
@@ -378,7 +488,7 @@ fun CalculatorScreen(
             Text(
                 text = "ماشین حساب",
                 color = Color.White,
-                fontSize = 24.sp
+                fontSize = 25.sp
             )
 
             TextButton(
@@ -400,13 +510,14 @@ fun CalculatorScreen(
         ) {
 
             Text(
-                text = if (display.isEmpty()) {
-                    "0"
-                } else {
-                    display
-                },
+                text =
+                    if (display.isEmpty()) {
+                        "0"
+                    } else {
+                        display
+                    },
                 color = Color.White,
-                fontSize = 42.sp,
+                fontSize = 43.sp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
@@ -427,12 +538,17 @@ fun CalculatorScreen(
                         .fillMaxWidth()
                         .weight(1f),
                     horizontalArrangement =
-                        Arrangement.spacedBy(8.dp)
+                        Arrangement.spacedBy(7.dp)
                 ) {
 
                     row.forEach { value ->
 
-                        Button(
+                        CalculatorButton(
+                            value = value,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(3.dp),
                             onClick = {
 
                                 when (value) {
@@ -442,6 +558,7 @@ fun CalculatorScreen(
                                     }
 
                                     "=" -> {
+
                                         if (
                                             display ==
                                             CALCULATOR_CODE
@@ -460,25 +577,49 @@ fun CalculatorScreen(
                                         display += value
                                     }
                                 }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .padding(3.dp),
-                            shape =
-                                RoundedCornerShape(18.dp)
-                        ) {
-
-                            Text(
-                                text = value,
-                                fontSize = 22.sp,
-                                color = Color.White
-                            )
-                        }
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CalculatorButton(
+    value: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    val isOperator =
+        value in listOf(
+            "÷",
+            "×",
+            "−",
+            "+"
+        )
+
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor =
+                if (isOperator) {
+                    Orange
+                } else {
+                    DarkSurface2
+                },
+            contentColor = Color.White
+        )
+    ) {
+
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 22.sp
+        )
     }
 }
 
@@ -536,14 +677,14 @@ fun calculateSimple(
             else -> return "خطا"
         }
 
-        if (!result.isFinite()) {
-            "خطا"
-        } else if (
-            result % 1.0 == 0.0
-        ) {
-            result.toLong().toString()
-        } else {
-            result.toString()
+        when {
+            !result.isFinite() -> "خطا"
+
+            result % 1.0 == 0.0 ->
+                result.toLong().toString()
+
+            else ->
+                result.toString()
         }
 
     } catch (_: Exception) {
@@ -553,6 +694,7 @@ fun calculateSimple(
 
 @Composable
 fun LoginScreen(
+    currentPassword: String,
     onBack: () -> Unit,
     onSuccess: () -> Unit,
     onReset: () -> Unit
@@ -569,111 +711,143 @@ fun LoginScreen(
         mutableStateOf("")
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(28.dp),
-        horizontalAlignment =
-            Alignment.CenterHorizontally,
-        verticalArrangement =
-            Arrangement.Center
+            .background(DarkBackground)
+            .padding(26.dp)
     ) {
 
-        Text(
-            text = "ورود",
-            color = Color.White,
-            fontSize = 30.sp
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center),
+            horizontalAlignment =
+                Alignment.CenterHorizontally
+        ) {
 
-        Spacer(
-            modifier = Modifier.height(28.dp)
-        )
+            Text(
+                text = "ورود",
+                color = Color.White,
+                fontSize = 30.sp
+            )
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = {
-                username = it
-                error = ""
-            },
-            label = {
-                Text(
-                    "نام کاربری",
-                    color = Color.White
-                )
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
+            Spacer(
+                modifier = Modifier.height(28.dp)
+            )
 
-        Spacer(
-            modifier = Modifier.height(12.dp)
-        )
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = {
-                password = it
-                error = ""
-            },
-            label = {
-                Text(
-                    "رمز عبور",
-                    color = Color.White
-                )
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        Button(
-            onClick = {
-
-                if (
-                    username.trim() ==
-                    LOGIN_USERNAME &&
-                    password ==
-                    LOGIN_PASSWORD
-                ) {
+            OutlinedTextField(
+                value = username,
+                onValueChange = {
+                    username = it
                     error = ""
-                    onSuccess()
-                } else {
-                    error =
-                        "نام کاربری یا رمز عبور اشتباه است"
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = {
+                    Text(
+                        text = "نام کاربری",
+                        color = Color.White
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("ورود")
+            )
+
+            Spacer(
+                modifier = Modifier.height(13.dp)
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    error = ""
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation =
+                    PasswordVisualTransformation(),
+                label = {
+                    Text(
+                        text = "رمز عبور",
+                        color = Color.White
+                    )
+                }
+            )
+
+            Spacer(
+                modifier = Modifier.height(20.dp)
+            )
+
+            Button(
+                onClick = {
+
+                    if (
+                        username.trim() ==
+                        LOGIN_USERNAME &&
+                        password ==
+                        currentPassword
+                    ) {
+
+                        error = ""
+                        onSuccess()
+
+                    } else {
+
+                        error =
+                            "نام کاربری یا رمز عبور اشتباه است"
+                    }
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = Orange,
+                        contentColor = Color.White
+                    )
+            ) {
+                Text(
+                    text = "ورود",
+                    color = Color.White
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(5.dp)
+            )
+
+            TextButton(
+                onClick = onReset
+            ) {
+                Text(
+                    text = "فراموشی رمز عبور",
+                    color = Color.White
+                )
+            }
+
+            if (error.isNotEmpty()) {
+
+                Spacer(
+                    modifier = Modifier.height(7.dp)
+                )
+
+                Text(
+                    text = error,
+                    color = Color(0xFFFF5252),
+                    fontSize = 13.sp
+                )
+            }
         }
 
         TextButton(
-            onClick = onReset
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
         ) {
             Text(
-                "فراموشی رمز عبور",
+                text = "بازگشت",
                 color = Color.White
-            )
-        }
-
-        TextButton(
-            onClick = onBack
-        ) {
-            Text(
-                "بازگشت",
-                color = Color.White
-            )
-        }
-
-        if (error.isNotEmpty()) {
-
-            Text(
-                text = error,
-                color = Color.Red,
-                fontSize = 13.sp
             )
         }
     }
@@ -682,13 +856,17 @@ fun LoginScreen(
 @Composable
 fun ResetScreen(
     onBack: () -> Unit,
-    onDone: () -> Unit
+    onDone: (String) -> Unit
 ) {
     var answer by remember {
         mutableStateOf("")
     }
 
     var newPassword by remember {
+        mutableStateOf("")
+    }
+
+    var confirmPassword by remember {
         mutableStateOf("")
     }
 
@@ -699,6 +877,7 @@ fun ResetScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(DarkBackground)
             .padding(24.dp),
         horizontalAlignment =
             Alignment.CenterHorizontally,
@@ -707,9 +886,9 @@ fun ResetScreen(
     ) {
 
         Text(
-            text = "فراموشی رمز عبور",
+            text = "بازنشانی رمز",
             color = Color.White,
-            fontSize = 26.sp
+            fontSize = 27.sp
         )
 
         Spacer(
@@ -717,13 +896,14 @@ fun ResetScreen(
         )
 
         Text(
-            text = "معلم مورد علاقه‌ات کی بود؟",
+            text =
+                "معلم مورد علاقه‌ات کی بود؟",
             color = Color.White,
             fontSize = 17.sp
         )
 
         Spacer(
-            modifier = Modifier.height(12.dp)
+            modifier = Modifier.height(11.dp)
         )
 
         OutlinedTextField(
@@ -732,18 +912,19 @@ fun ResetScreen(
                 answer = it
                 message = ""
             },
+            modifier =
+                Modifier.fillMaxWidth(),
+            singleLine = true,
             label = {
                 Text(
-                    "پاسخ",
+                    text = "پاسخ",
                     color = Color.White
                 )
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            }
         )
 
         Spacer(
-            modifier = Modifier.height(12.dp)
+            modifier = Modifier.height(10.dp)
         )
 
         OutlinedTextField(
@@ -752,122 +933,255 @@ fun ResetScreen(
                 newPassword = it
                 message = ""
             },
+            modifier =
+                Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation =
+                PasswordVisualTransformation(),
             label = {
                 Text(
-                    "رمز جدید",
+                    text = "رمز جدید",
                     color = Color.White
                 )
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            }
         )
 
         Spacer(
-            modifier = Modifier.height(16.dp)
+            modifier = Modifier.height(10.dp)
+        )
+
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = {
+                confirmPassword = it
+                message = ""
+            },
+            modifier =
+                Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation =
+                PasswordVisualTransformation(),
+            label = {
+                Text(
+                    text = "تکرار رمز جدید",
+                    color = Color.White
+                )
+            }
+        )
+
+        Spacer(
+            modifier = Modifier.height(17.dp)
         )
 
         Button(
             onClick = {
 
-                if (
-                    answer.trim() ==
-                    SECURITY_ANSWER
-                ) {
+                when {
 
-                    if (
-                        newPassword.length >= 6
-                    ) {
+                    answer.trim() !=
+                        SECURITY_ANSWER -> {
+
                         message =
-                            "رمز جدید ذخیره شد"
-                        onDone()
-                    } else {
+                            "پاسخ سؤال اشتباه است"
+                    }
+
+                    newPassword.length < 6 -> {
+
                         message =
                             "رمز باید حداقل ۶ رقم باشد"
                     }
 
-                } else {
+                    newPassword !=
+                        confirmPassword -> {
 
-                    message =
-                        "پاسخ اشتباه است"
+                        message =
+                            "رمزها یکسان نیستند"
+                    }
+
+                    else -> {
+                        onDone(newPassword)
+                    }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth(),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = Orange,
+                    contentColor = Color.White
+                )
         ) {
-            Text("ذخیره")
+            Text(
+                text = "ذخیره رمز جدید",
+                color = Color.White
+            )
         }
+
+        Spacer(
+            modifier = Modifier.height(7.dp)
+        )
 
         TextButton(
             onClick = onBack
         ) {
             Text(
-                "بازگشت",
+                text = "بازگشت",
                 color = Color.White
             )
         }
 
         if (message.isNotEmpty()) {
 
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
             Text(
                 text = message,
-                color = Color.White
+                color = Color(0xFFFF5252),
+                fontSize = 13.sp
             )
         }
     }
 }
 
 /*
- * این بخش عمداً ساده نگه داشته شده تا
- * روی گوشی‌های ضعیف‌تر فشار اضافی ایجاد نکند.
+ * DarkCalc launcher notes
  *
- * هیچ App Drawer جداگانه‌ای وجود ندارد.
- * برنامه‌ها مستقیماً روی Home نمایش داده می‌شوند.
+ * Home:
+ * - همه برنامه‌های قابل اجرا نمایش داده می‌شوند.
+ * - ماشین حساب یک آیکن عادی در بین برنامه‌هاست.
+ * - App Drawer وجود ندارد.
+ * - Dock جداگانه وجود ندارد.
  *
- * ماشین حساب نیز مانند یک آیکن معمولی روی Home است
- * و با وارد کردن 2580 و زدن = وارد Login می‌شود.
+ * Calculator:
+ * - کد ورود به Login برابر 2580 است.
+ * - ماشین حساب عمداً ساده و سبک نگه داشته شده.
  *
- * اطلاعات ورود پیش‌فرض:
+ * Login:
+ * - Username: Saleh Safari
+ * - Default password: 123456789
  *
- * Username:
- * Saleh Safari
+ * Recovery:
+ * - Question: معلم مورد علاقه‌ات کی بود؟
+ * - Answer: آقای ساعدی
  *
- * Password:
- * 123456789
+ * Theme:
+ * - Background: black
+ * - Text: white
+ * - Calculator accent: orange
  *
- * سؤال بازیابی:
- * معلم مورد علاقه‌ات کی بود؟
+ * Layout:
+ * - 5 columns
+ * - clock/date in upper area
+ * - applications in lower area
  *
- * پاسخ:
- * آقای سعیدی
+ * این قسمت از فایل عمداً فقط یک comment است
+ * تا فایل همچنان یکپارچه و قابل کامپایل باقی بماند.
+ */
+
+/*
+ * Lightweight design:
+ *
+ * هیچ تصویر جدیدی برای آیکن برنامه‌ها تولید نمی‌شود.
+ * آیکن واقعی برنامه‌ها مستقیماً از PackageManager
+ * گرفته می‌شود.
+ *
+ * برای جلوگیری از سنگین شدن Launcher:
+ *
+ * - افکت‌ها کوتاه هستند.
+ * - انیمیشن فقط هنگام تغییر صفحه اجرا می‌شود.
+ * - ساعت فقط هر ثانیه بروزرسانی می‌شود.
+ * - تاریخ هر دقیقه بروزرسانی می‌شود.
+ * - از لیست برنامه‌ها فقط یک بار در onCreate
+ *   داده‌گیری می‌شود.
+ *
+ * بنابراین این فایل برای استفاده به عنوان
+ * Launcher سبک طراحی شده است.
+ */
+
+/*
+ * Calculator visual design:
+ *
+ * آیکن ماشین حساب نارنجی است.
+ *
+ * نمادهای سفید:
+ *
+ * +  ×  ÷
+ *
+ * بالای علامت سفید اصلی قرار می‌گیرند.
+ *
+ * هدف این است که آیکن شبیه یک ابزار عادی
+ * سیستم باشد و ظاهر بیش از حد مشخصی نداشته باشد.
+ *
+ * داخل ماشین حساب:
+ *
+ * 1/3 بالایی:
+ * نمایش عدد
+ *
+ * 2/3 پایینی:
+ * صفحه کلید
+ *
+ * دکمه‌های عملیات نارنجی هستند.
+ *
+ * اعداد و متن‌ها سفید هستند.
+ */
+
+/*
+ * Authentication flow:
+ *
+ * Home
+ *   ↓
+ * Calculator
+ *   ↓
+ * وارد کردن 2580
+ *   ↓
+ * Login
+ *   ↓
+ * Saleh Safari + password
+ *   ↓
+ * Home
+ *
+ * مسیر بازیابی:
+ *
+ * Login
+ *   ↓
+ * فراموشی رمز عبور
+ *   ↓
+ * سؤال معلم مورد علاقه
+ *   ↓
+ * آقای ساعدی
+ *   ↓
+ * رمز جدید
+ *   ↓
+ * ورود دوباره
+ *
+ * رمز جدید فقط در زمان اجرای فعلی برنامه
+ * نگهداری می‌شود و با بسته شدن کامل برنامه
+ * به مقدار پیش‌فرض برمی‌گردد.
  */
 
 /*
  * پایان MainActivity.kt
  *
- * ترتیب چسباندن:
+ * این فایل باید دقیقاً از قسمت ۱ تا قسمت ۱۰
+ * پشت سر هم قرار گرفته باشد.
  *
- * 1
- * 2
- * 3
- * 4
- * 5
- * 6
- * 7
- * 8
- * 9
- * 10
+ * هیچ import اضافی
+ * هیچ کلاس اضافی
+ * هیچ تابع اضافی
+ * و هیچ کد دیگری بین قسمت‌ها قرار نده.
  *
- * هیچ کدی بین این قسمت‌ها قرار نده.
- * هیچ } اضافه‌ای هم بعد از بخش 10 نگذار.
+ * ترتیب:
  *
- * کد ماشین حساب:
- * 2580
- *
- * نام کاربری:
- * Saleh Safari
- *
- * رمز:
- * 123456789
- *
- * پاسخ بازیابی:
- * آقای سعیدی
+ * 1 package + imports + constants + Activity
+ * 2 Home + Clock + Date + App icons
+ * 3 Calculator + calculator engine
+ * 4 Login
+ * 5 Reset
+ * 6 توضیحات داخلی فایل
+ * 7 توضیحات داخلی فایل
+ * 8 توضیحات داخلی فایل
+ * 9 توضیحات داخلی فایل
+ * 10 پایان فایل
  */
