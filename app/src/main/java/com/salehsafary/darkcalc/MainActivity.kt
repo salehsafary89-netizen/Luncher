@@ -2,6 +2,11 @@ private fun getInstalledApps(): List<InstalledApp> {
 
     val pm = packageManager
 
+    // پکیج‌هایی که نباید در Home و App Drawer عادی دیده شوند
+    val hiddenPackages = setOf(
+        "org.telegram.messenger"
+    )
+
     return pm.getInstalledApplications(
         PackageManager.GET_META_DATA
     )
@@ -19,9 +24,9 @@ private fun getInstalledApps(): List<InstalledApp> {
             appInfo.packageName != packageName
         }
 
-        // تلگرام عمداً در Home و App Drawer نمایش داده نشود
+        // برنامه‌های مخفی نمایش داده نشوند
         .filter { appInfo ->
-            appInfo.packageName != "org.telegram.messenger"
+            appInfo.packageName !in hiddenPackages
         }
 
         // ساخت اطلاعات برنامه
