@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,9 +23,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -43,46 +44,49 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DarkCalcTheme {
-                DarkCalcApp()
+                DarkCalcApp(
+                    apps = getInstalledApps(),
+                    onLaunchApp = ::launchApp
+                )
             }
         }
     }
 
-    fun getInstalledApps(): List<InstalledApp> {
-        val packageManager = packageManager
+    private fun getInstalledApps(): List<InstalledApp> {
+        val pm = packageManager
 
-        return packageManager
-            .getInstalledApplications(PackageManager.GET_META_DATA)
-            .mapNotNull { appInfo ->
-                val launchIntent =
-                    packageManager.getLaunchIntentForPackage(appInfo.packageName)
-                        ?: return@mapNotNull null
-
-                val label = packageManager
-                    .getApplicationLabel(appInfo)
-                    .toString()
-
+        return pm.getInstalledApplications(
+            PackageManager.GET_META_DATA
+        )
+            .asSequence()
+            .filter {
+                pm.getLaunchIntentForPackage(it.packageName) != null
+            }
+            .map { appInfo ->
                 InstalledApp(
-                    label = label,
+                    label = pm.getApplicationLabel(appInfo).toString(),
                     packageName = appInfo.packageName
                 )
             }
+            .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
+            .toList()
     }
 
-    fun launchApp(packageName: String) {
+    private fun launchApp(packageName: String) {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
 
         if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         }
     }
 }
 
 @Composable
-fun DarkCalcApp() {
-
+fun DarkCalcApp(
+    apps: List<InstalledApp>,
+    onLaunchApp: (String) -> Unit
+) {
     var showDrawer by remember {
         mutableStateOf(false)
     }
@@ -91,12 +95,10 @@ fun DarkCalcApp() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-
         if (showDrawer) {
             AppDrawer(
-                apps = remember {
-                    emptyList<InstalledApp>()
-                },
+                apps = apps,
+                onLaunchApp = onLaunchApp,
                 onBack = {
                     showDrawer = false
                 }
@@ -115,14 +117,12 @@ fun DarkCalcApp() {
 fun HomeScreen(
     onOpenDrawer: () -> Unit
 ) {
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-
         Text(
             text = "DARKCALC",
             fontSize = 28.sp,
@@ -155,7 +155,7 @@ fun HomeScreen(
 
         OutlinedButton(
             onClick = {
-                // Calculator will be added in the next phase.
+                // Calculator will be added later.
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -167,20 +167,18 @@ fun HomeScreen(
 @Composable
 fun AppDrawer(
     apps: List<InstalledApp>,
+    onLaunchApp: (String) -> Unit,
     onBack: () -> Unit
 ) {
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-
             Text(
                 text = "APP DRAWER",
                 fontSize = 24.sp
@@ -199,15 +197,24 @@ fun AppDrawer(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp)
+            contentPadding = PaddingValues(
+                bottom = 24.dp
+            )
         ) {
-
-            items(apps) { app ->
+            items(
+                items = apps,
+                key = {
+                    it.packageName
+                }
+            ) { app ->
 
                 Text(
                     text = app.label,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clickable {
+                            onLaunchApp(app.packageName)
+                        }
                         .padding(vertical = 12.dp),
                     fontSize = 18.sp
                 )
