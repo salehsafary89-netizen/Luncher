@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.salehsafary.darkcalc.ui.theme.DarkCalcTheme
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class InstalledApp(
     val label: String,
@@ -69,15 +74,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * دریافت برنامه‌های نصب‌شده‌ای که Intent قابل اجرا دارند.
-     *
-     * شامل:
-     * - برنامه‌های معمولی
-     * - برنامه‌های سیستمی قابل اجرا
-     * - نام واقعی برنامه
-     * - آیکن واقعی برنامه
-     */
     private fun getInstalledApps(): List<InstalledApp> {
 
         val pm = packageManager
@@ -86,20 +82,14 @@ class MainActivity : ComponentActivity() {
             PackageManager.GET_META_DATA
         )
             .asSequence()
-
-            // فقط برنامه‌هایی که قابل اجرا هستند
             .filter { appInfo ->
                 pm.getLaunchIntentForPackage(
                     appInfo.packageName
                 ) != null
             }
-
-            // خود DarkCalc داخل App Drawer نمایش داده نشود
             .filter { appInfo ->
                 appInfo.packageName != packageName
             }
-
-            // تبدیل ApplicationInfo به InstalledApp
             .map { appInfo ->
 
                 InstalledApp(
@@ -114,24 +104,15 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             }
-
-            // جلوگیری از تکراری شدن Package
             .distinctBy {
                 it.packageName
             }
-
-            // مرتب‌سازی الفبایی
             .sortedBy {
                 it.label.lowercase()
             }
-
             .toList()
     }
 
-    /**
-     * تبدیل Drawable آیکن برنامه به Bitmap
-     * تا Compose بتواند آن را نمایش دهد.
-     */
     private fun drawableToBitmap(
         drawable: Drawable
     ): Bitmap {
@@ -170,9 +151,6 @@ class MainActivity : ComponentActivity() {
         return bitmap
     }
 
-    /**
-     * اجرای برنامه انتخاب‌شده
-     */
     private fun launchApp(
         packageName: String
     ) {
@@ -187,10 +165,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-/* ------------------------------------------------ */
-/* Launcher                                       */
-/* ------------------------------------------------ */
 
 enum class LauncherScreen {
     HOME,
@@ -243,9 +217,9 @@ fun DarkCalcLauncher(
     }
 }
 
-/* ------------------------------------------------ */
-/* Home Screen                                    */
-/* ------------------------------------------------ */
+/* ================================================= */
+/* HOME SCREEN                                      */
+/* ================================================= */
 
 @Composable
 fun HomeScreen(
@@ -254,54 +228,53 @@ fun HomeScreen(
     onOpenDrawer: () -> Unit
 ) {
 
-    /*
-     * چند برنامه اول برای صفحه اصلی.
-     * تمام برنامه‌ها همچنان در App Drawer هستند.
-     */
-    val homeApps =
-        apps.take(8)
-
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                MaterialTheme.colorScheme.background
+            )
             .padding(
                 start = 16.dp,
                 end = 16.dp,
-                top = 32.dp,
+                top = 28.dp,
                 bottom = 12.dp
             )
     ) {
 
-        /* Header */
+        /* ساعت */
 
-        Text(
-            text = "DARKCALC",
-            fontSize = 27.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Text(
-            text = "Launcher",
-            fontSize = 13.sp
-        )
+        LiveClock()
 
         Spacer(
-            modifier = Modifier.height(24.dp)
+            modifier = Modifier.height(4.dp)
         )
 
-        /* Home App Grid */
+        /* تاریخ */
+
+        LiveDate()
+
+        Spacer(
+            modifier = Modifier.height(30.dp)
+        )
+
+        /*
+         * برنامه‌های صفحه اصلی
+         */
+        val homeApps =
+            apps.take(8)
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
 
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier.weight(1f),
 
             horizontalArrangement =
                 Arrangement.spacedBy(10.dp),
 
             verticalArrangement =
-                Arrangement.spacedBy(20.dp),
+                Arrangement.spacedBy(22.dp),
 
             contentPadding =
                 PaddingValues(
@@ -319,6 +292,7 @@ fun HomeScreen(
 
                 AppIcon(
                     app = app,
+
                     onClick = {
                         onLaunchApp(
                             app.packageName
@@ -336,9 +310,97 @@ fun HomeScreen(
     }
 }
 
-/* ------------------------------------------------ */
-/* App Icon                                       */
-/* ------------------------------------------------ */
+/* ================================================= */
+/* LIVE CLOCK                                       */
+/* ================================================= */
+
+@Composable
+fun LiveClock() {
+
+    var currentTime by remember {
+        mutableStateOf(
+            SimpleDateFormat(
+                "HH:mm",
+                Locale.getDefault()
+            ).format(Date())
+        )
+    }
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            currentTime =
+                SimpleDateFormat(
+                    "HH:mm",
+                    Locale.getDefault()
+                ).format(Date())
+
+            delay(1000)
+        }
+    }
+
+    Text(
+        text = currentTime,
+
+        fontSize = 52.sp,
+
+        fontWeight =
+            FontWeight.Light,
+
+        color =
+            MaterialTheme
+                .colorScheme
+                .primary
+    )
+}
+
+/* ================================================= */
+/* LIVE DATE                                        */
+/* ================================================= */
+
+@Composable
+fun LiveDate() {
+
+    var currentDate by remember {
+
+        mutableStateOf(
+            SimpleDateFormat(
+                "EEEE، d MMMM yyyy",
+                Locale("fa")
+            ).format(Date())
+        )
+    }
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            currentDate =
+                SimpleDateFormat(
+                    "EEEE، d MMMM yyyy",
+                    Locale("fa")
+                ).format(Date())
+
+            delay(60000)
+        }
+    }
+
+    Text(
+        text = currentDate,
+
+        fontSize = 15.sp,
+
+        color =
+            MaterialTheme
+                .colorScheme
+                .onBackground
+    )
+}
+
+/* ================================================= */
+/* APP ICON                                         */
+/* ================================================= */
 
 @Composable
 fun AppIcon(
@@ -383,9 +445,9 @@ fun AppIcon(
     }
 }
 
-/* ------------------------------------------------ */
-/* Dock                                           */
-/* ------------------------------------------------ */
+/* ================================================= */
+/* DOCK                                             */
+/* ================================================= */
 
 @Composable
 fun Dock(
@@ -396,7 +458,9 @@ fun Dock(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                MaterialTheme.colorScheme.surface
+                MaterialTheme
+                    .colorScheme
+                    .surface
             )
             .padding(
                 vertical = 10.dp,
@@ -412,31 +476,38 @@ fun Dock(
 
         DockButton(
             symbol = "▦",
+
             label = "برنامه‌ها",
-            onClick = onOpenDrawer
+
+            onClick =
+                onOpenDrawer
         )
 
         DockButton(
             symbol = "⌕",
+
             label = "جستجو",
+
             onClick = {
-                // Search will be added later.
+                // در مرحله بعد اضافه می‌شود
             }
         )
 
         DockButton(
             symbol = "⚙",
+
             label = "تنظیمات",
+
             onClick = {
-                // Launcher settings will be added later.
+                // در مرحله بعد اضافه می‌شود
             }
         )
     }
 }
 
-/* ------------------------------------------------ */
-/* Dock Button                                    */
-/* ------------------------------------------------ */
+/* ================================================= */
+/* DOCK BUTTON                                      */
+/* ================================================= */
 
 @Composable
 fun DockButton(
@@ -478,9 +549,9 @@ fun DockButton(
     }
 }
 
-/* ------------------------------------------------ */
-/* App Drawer                                     */
-/* ------------------------------------------------ */
+/* ================================================= */
+/* APP DRAWER                                       */
+/* ================================================= */
 
 @Composable
 fun AppDrawer(
@@ -494,8 +565,6 @@ fun AppDrawer(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-
-        /* Drawer Header */
 
         Row(
             modifier =
@@ -542,8 +611,6 @@ fun AppDrawer(
                 Modifier.height(16.dp)
         )
 
-        /* Complete App List */
-
         LazyColumn(
             modifier =
                 Modifier.fillMaxSize(),
@@ -581,7 +648,8 @@ fun AppDrawer(
 
                     Image(
                         bitmap =
-                            app.icon.asImageBitmap(),
+                            app.icon
+                                .asImageBitmap(),
 
                         contentDescription =
                             app.label,
