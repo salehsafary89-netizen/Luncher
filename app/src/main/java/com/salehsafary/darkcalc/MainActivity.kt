@@ -8,6 +8,15 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,25 +30,31 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -98,9 +113,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-
             DarkCalcTheme {
-
                 DarkCalcApp(
                     activity = this
                 )
@@ -109,11 +122,6 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /*
-     * برنامه‌های قابل اجرا
-     *
-     * Telegram عمداً از این لیست حذف می‌شود.
-     */
     fun getInstalledApps(): List<InstalledApp> {
 
         val pm = packageManager
@@ -156,11 +164,9 @@ class MainActivity : ComponentActivity() {
                 )
             }
             .distinctBy { app ->
-
                 app.packageName
             }
             .sortedBy { app ->
-
                 app.label.lowercase(
                     Locale.getDefault()
                 )
@@ -169,14 +175,9 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /*
-     * فقط برنامه‌هایی که در بخش مخفی
-     * باید نمایش داده شوند.
-     */
     fun getHiddenApps(): List<InstalledApp> {
 
         val pm = packageManager
-
         val result =
             mutableListOf<InstalledApp>()
 
@@ -234,7 +235,6 @@ class MainActivity : ComponentActivity() {
                 )
 
         if (intent != null) {
-
             startActivity(intent)
         }
     }
@@ -245,18 +245,14 @@ class MainActivity : ComponentActivity() {
     ): Bitmap {
 
         val width =
-            if (
-                drawable.intrinsicWidth > 0
-            ) {
+            if (drawable.intrinsicWidth > 0) {
                 drawable.intrinsicWidth
             } else {
                 96
             }
 
         val height =
-            if (
-                drawable.intrinsicHeight > 0
-            ) {
+            if (drawable.intrinsicHeight > 0) {
                 drawable.intrinsicHeight
             } else {
                 96
@@ -290,9 +286,7 @@ class MainActivity : ComponentActivity() {
         password: String
     ): Boolean {
 
-        if (
-            username != USERNAME
-        ) {
+        if (username != USERNAME) {
             return false
         }
 
@@ -308,12 +302,7 @@ class MainActivity : ComponentActivity() {
                 null
             )
 
-        /*
-         * اولین ورود:
-         * رمز اولیه 123456789
-         */
         if (savedHash == null) {
-
             return password ==
                 DEFAULT_PASSWORD
         }
@@ -345,7 +334,9 @@ class MainActivity : ComponentActivity() {
     ): Boolean {
 
         return normalizeText(answer) ==
-            normalizeText(SECURITY_ANSWER)
+            normalizeText(
+                SECURITY_ANSWER
+            )
     }
 
 
@@ -394,37 +385,34 @@ fun DarkCalcApp(
 ) {
 
     var screen by remember {
-
         mutableStateOf(
             LauncherScreen.HOME
         )
     }
 
-    val apps =
-        remember {
-            activity.getInstalledApps()
-        }
+    val apps = remember {
+        activity.getInstalledApps()
+    }
 
-    val calculator =
-        remember {
+    val calculator = remember {
 
-            InstalledApp(
-                label = "ماشین حساب",
+        InstalledApp(
+            label = "ماشین حساب",
 
-                packageName =
-                    "darkcalc.calculator",
+            packageName =
+                "darkcalc.calculator",
 
-                icon =
-                    activity.drawableToBitmap(
-                        activity.applicationInfo
-                            .loadIcon(
-                                activity.packageManager
-                            )
-                    ),
+            icon =
+                activity.drawableToBitmap(
+                    activity.applicationInfo
+                        .loadIcon(
+                            activity.packageManager
+                        )
+                ),
 
-                isCalculator = true
-            )
-        }
+            isCalculator = true
+        )
+    }
 
 
     Surface(
@@ -572,9 +560,10 @@ fun DarkCalcApp(
 
 
 /* =========================================================
-   HOME
+   HOME SCREEN
    ========================================================= */
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
@@ -598,8 +587,14 @@ fun HomeScreen(
         }
 
     var currentPage by remember {
-        mutableStateOf(0)
+        mutableIntStateOf(0)
     }
+
+    val safePage =
+        currentPage.coerceIn(
+            0,
+            pages.lastIndex
+        )
 
 
     Column(
@@ -633,20 +628,22 @@ fun HomeScreen(
                             onDragEnd = {
 
                                 if (
-                                    dragAmount < -100 &&
-                                    currentPage <
+                                    dragAmount < -80f &&
+                                    safePage <
                                     pages.lastIndex
                                 ) {
 
-                                    currentPage++
+                                    currentPage =
+                                        safePage + 1
                                 }
 
                                 if (
-                                    dragAmount > 100 &&
-                                    currentPage > 0
+                                    dragAmount > 80f &&
+                                    safePage > 0
                                 ) {
 
-                                    currentPage--
+                                    currentPage =
+                                        safePage - 1
                                 }
 
                                 dragAmount = 0f
@@ -655,898 +652,129 @@ fun HomeScreen(
                     }
         ) {
 
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-            ) {
+            AnimatedContent(
+                targetState = safePage,
 
-                LiveClock()
+                transitionSpec = {
 
-                LiveDate()
+                    if (
+                        targetState >
+                        initialState
+                    ) {
 
-                Spacer(
-                    modifier =
-                        Modifier.height(20.dp)
-                )
-
-
-                LazyVerticalGrid(
-                    columns =
-                        GridCells.Fixed(4),
-
-                    horizontalArrangement =
-                        Arrangement.spacedBy(10.dp),
-
-                    verticalArrangement =
-                        Arrangement.spacedBy(20.dp)
-                ) {
-
-                    items(
-                        pages[currentPage],
-                        key = { app ->
-                            app.packageName
-                        }
-                    ) { app ->
-
-                        AppIcon(
-                            app = app,
-
-                            onClick = {
-
-                                if (
-                                    app.isCalculator
-                                ) {
-
-                                    onCalculator()
-
-                                } else {
-
-                                    onLaunch(
-                                        app.packageName
+                        (
+                            slideInHorizontally(
+                                initialOffsetX = {
+                                    it
+                                },
+                                animationSpec =
+                                    tween(
+                                        280,
+                                        easing =
+                                            FastOutSlowInEasing
                                     )
-                                }
-                            }
+                            ) +
+                                fadeIn(
+                                    tween(180)
+                                )
+                        ) togetherWith
+                        (
+                            slideOutHorizontally(
+                                targetOffsetX = {
+                                    -it
+                                },
+                                animationSpec =
+                                    tween(
+                                        280,
+                                        easing =
+                                            FastOutSlowInEasing
+                                    )
+                            ) +
+                                fadeOut(
+                                    tween(180)
+                                )
+                        )
+
+                    } else {
+
+                        (
+                            slideInHorizontally(
+                                initialOffsetX = {
+                                    -it
+                                },
+                                animationSpec =
+                                    tween(
+                                        280,
+                                        easing =
+                                            FastOutSlowInEasing
+                                    )
+                            ) +
+                                fadeIn(
+                                    tween(180)
+                                )
+                        ) togetherWith
+                        (
+                            slideOutHorizontally(
+                                targetOffsetX = {
+                                    it
+                                },
+                                animationSpec =
+                                    tween(
+                                        280,
+                                        easing =
+                                            FastOutSlowInEasing
+                                    )
+                            ) +
+                                fadeOut(
+                                    tween(180)
+                                )
                         )
                     }
-                }
-            }
-        }
-
-
-        PageIndicator(
-            count =
-                pages.size,
-
-            current =
-                currentPage
-        )
-
-
-        Dock(
-            onDrawer =
-                onDrawer,
-
-            onCalculator =
-                onCalculator
-        )
-    }
-}
-
-
-/* =========================================================
-   PAGE INDICATOR
-   ========================================================= */
-
-@Composable
-fun PageIndicator(
-    count: Int,
-    current: Int
-) {
-
-    if (count <= 1) {
-        return
-    }
-
-    Row(
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        horizontalArrangement =
-            Arrangement.Center
-    ) {
-
-        repeat(count) { index ->
-
-            Text(
-                text =
-                    if (
-                        index == current
-                    ) {
-                        "●"
-                    } else {
-                        "○"
-                    },
-
-                fontSize =
-                    12.sp,
-
-                modifier =
-                    Modifier.padding(
-                        horizontal = 3.dp
-                    )
-            )
-        }
-    }
-}
-
-
-/* =========================================================
-   CLOCK
-   ========================================================= */
-
-@Composable
-fun LiveClock() {
-
-    var time by remember {
-        mutableStateOf("")
-    }
-
-    LaunchedEffect(Unit) {
-
-        while (true) {
-
-            time =
-                SimpleDateFormat(
-                    "HH:mm",
-                    Locale.getDefault()
-                ).format(
-                    Date()
-                )
-
-            delay(1000)
-        }
-    }
-
-    Text(
-        text = time,
-
-        fontSize = 48.sp,
-
-        fontWeight =
-            FontWeight.Light
-    )
-}
-
-
-/* =========================================================
-   DATE
-   ========================================================= */
-
-@Composable
-fun LiveDate() {
-
-    var date by remember {
-        mutableStateOf("")
-    }
-
-    LaunchedEffect(Unit) {
-
-        while (true) {
-
-            date =
-                SimpleDateFormat(
-                    "EEEE، d MMMM yyyy",
-                    Locale("fa")
-                ).format(
-                    Date()
-                )
-
-            delay(60000)
-        }
-    }
-
-    Text(
-        text = date,
-
-        fontSize = 14.sp
-    )
-}
-
-
-/* =========================================================
-   APP ICON
-   ========================================================= */
-
-@Composable
-fun AppIcon(
-    app: InstalledApp,
-    onClick: () -> Unit
-) {
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    onClick()
                 },
 
-        horizontalAlignment =
-            Alignment.CenterHorizontally
-    ) {
-
-        Image(
-            bitmap =
-                app.icon.asImageBitmap(),
-
-            contentDescription =
-                app.label,
-
-            modifier =
-                Modifier.size(56.dp)
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(5.dp)
-        )
-
-        Text(
-            text =
-                app.label,
-
-            fontSize =
-                11.sp,
-
-            maxLines =
-                1
-        )
-    }
-}
-
-
-/* =========================================================
-   DOCK
-   ========================================================= */
-
-@Composable
-fun Dock(
-    onDrawer: () -> Unit,
-    onCalculator: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                MaterialTheme.colorScheme.surface
-            )
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        DockButton(
-            text = "▦",
-            label = "برنامه‌ها",
-            onClick = onDrawer
-        )
-
-        DockButton(
-            text = "🧮",
-            label = "ماشین حساب",
-            onClick = onCalculator
-        )
-    }
-}
-
-
-/* =========================================================
-   DOCK BUTTON
-   ========================================================= */
-
-@Composable
-fun DockButton(
-    text: String,
-    label: String,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .clickable {
-                onClick()
-            }
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = text,
-            fontSize = 24.sp
-        )
-
-        Text(
-            text = label,
-            fontSize = 10.sp
-        )
-    }
-}
-
-
-/* =========================================================
-   APP DRAWER
-   ========================================================= */
-
-@Composable
-fun AppDrawer(
-    apps: List<InstalledApp>,
-    calculator: InstalledApp,
-    onLaunch: (String) -> Unit,
-    onCalculator: () -> Unit,
-    onBack: () -> Unit
-) {
-    val drawerApps = listOf(calculator) + apps
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "برنامه‌ها",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onBack
-            ) {
-                Text("خانه")
-            }
-        }
-
-        Spacer(
-            modifier = Modifier.height(16.dp)
-        )
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            contentPadding = PaddingValues(bottom = 20.dp)
-        ) {
-            items(
-                items = drawerApps,
-                key = { app ->
-                    app.packageName
-                }
-            ) { app ->
-
-                AppIcon(
-                    app = app,
-                    onClick = {
-                        if (app.isCalculator) {
-                            onCalculator()
-                        } else {
-                            onLaunch(app.packageName)
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-
-/* =========================================================
-   CALCULATOR
-   ========================================================= */
-
-@Composable
-fun CalculatorScreen(
-    onBack: () -> Unit,
-    onSecretCode: () -> Unit
-) {
-    var display by remember {
-        mutableStateOf("")
-    }
-
-    val rows = listOf(
-        listOf("7", "8", "9", "÷"),
-        listOf("4", "5", "6", "×"),
-        listOf("1", "2", "3", "−"),
-        listOf("0", "C", "=", "+")
-    )
-
-    fun press(value: String) {
-        when (value) {
-            "C" -> {
-                display = ""
-            }
-
-            "=" -> {
-                if (display == SECRET_CODE) {
-                    display = ""
-                    onSecretCode()
-                } else {
-                    display = calculateSimple(display)
-                }
-            }
-
-            else -> {
-                display += value
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "ماشین حساب",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onBack
-            ) {
-                Text("بازگشت")
-            }
-        }
-
-        Spacer(
-            modifier = Modifier.height(30.dp)
-        )
-
-        Text(
-            text = if (display.isEmpty()) "0" else display,
-            fontSize = 38.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        rows.forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { value ->
-                    Button(
-                        onClick = {
-                            press(value)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(60.dp)
-                    ) {
-                        Text(
-                            text = value,
-                            fontSize = 21.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(
-                modifier = Modifier.height(8.dp)
-            )
-        }
-    }
-}
-
-
-/* =========================================================
-   CALCULATOR ENGINE
-   ========================================================= */
-
-fun calculateSimple(
-    expression: String
-): String {
-
-    if (expression.isBlank()) {
-        return "0"
-    }
-
-    return try {
-        val normalized = expression
-            .replace("×", "*")
-            .replace("÷", "/")
-            .replace("−", "-")
-
-        val operators = listOf('+', '-', '*', '/')
-
-        val operator = operators.firstOrNull { op ->
-            normalized.contains(op)
-        } ?: return normalized
-
-        val parts = normalized.split(operator)
-
-        if (parts.size != 2) {
-            return "خطا"
-        }
-
-        val first = parts[0]
-            .trim()
-            .toDouble()
-
-        val second = parts[1]
-            .trim()
-            .toDouble()
-
-        val result = when (operator) {
-            '+' -> first + second
-            '-' -> first - second
-            '*' -> first * second
-
-            '/' -> {
-                if (second == 0.0) {
-                    return "خطا"
-                }
-
-                first / second
-            }
-
-            else -> {
-                return "خطا"
-            }
-        }
-
-        if (!result.isFinite()) {
-            "خطا"
-        } else if (result % 1.0 == 0.0) {
-            result.toLong().toString()
-        } else {
-            result.toString()
-        }
-
-    } catch (
-        _: Exception
-    ) {
-        "خطا"
-    }
-}
-
-
-/* =========================================================
-   LOGIN
-   ========================================================= */
-
-@Composable
-fun LoginScreen(
-    activity: MainActivity,
-    onBack: () -> Unit,
-    onSuccess: () -> Unit,
-    onReset: () -> Unit
-) {
-    var username by remember {
-        mutableStateOf("")
-    }
-
-    var password by remember {
-        mutableStateOf("")
-    }
-
-    var error by remember {
-        mutableStateOf("")
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "ورود",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
-
-        OutlinedTextField(
-            value = username,
-            onValueChange = {
-                username = it
-            },
-            label = {
-                Text("نام کاربری")
-            }
-        )
-
-        Spacer(
-            modifier = Modifier.height(12.dp)
-        )
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = {
-                password = it
-            },
-            label = {
-                Text("رمز عبور")
-            },
-            visualTransformation =
-                PasswordVisualTransformation()
-        )
-
-        Spacer(
-            modifier = Modifier.height(16.dp)
-        )
-
-        Button(
-            onClick = {
-                if (
-                    activity.checkLogin(
-                        username,
-                        password
-                    )
+                label =
+                    "HomePageAnimation"
+            ) { page ->
+
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(
+                                horizontal = 16.dp,
+                                vertical = 12.dp
+                            )
                 ) {
-                    error = ""
-                    onSuccess()
-                } else {
-                    error =
-                        "نام کاربری یا رمز اشتباه است"
-                }
-            }
-        ) {
-            Text("ورود")
-        }
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
+                    LiveClock()
 
-        OutlinedButton(
-            onClick = onReset
-        ) {
-            Text("فراموشی رمز")
-        }
+                    LiveDate()
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
+                    Spacer(
+                        modifier =
+                            Modifier.height(18.dp)
+                    )
 
-        OutlinedButton(
-            onClick = onBack
-        ) {
-            Text("بازگشت")
-        }
+                    LazyVerticalGrid(
+                        columns =
+                            GridCells.Fixed(4),
 
-        if (error.isNotEmpty()) {
-            Spacer(
-                modifier = Modifier.height(10.dp)
-            )
+                        modifier =
+                            Modifier.fillMaxSize(),
 
-            Text(
-                text = error
-            )
-        }
-    }
-}
+                        contentPadding =
+                            PaddingValues(
+                                bottom = 20.dp
+                            ),
 
+                        horizontalArrangement =
+                            Arrangement.spacedBy(8.dp),
 
-/* =========================================================
-   RESET PASSWORD
-   ========================================================= */
-
-@Composable
-fun ResetPasswordScreen(
-    activity: MainActivity,
-    onBack: () -> Unit,
-    onDone: () -> Unit
-) {
-    var answer by remember {
-        mutableStateOf("")
-    }
-
-    var newPassword by remember {
-        mutableStateOf("")
-    }
-
-    var confirmPassword by remember {
-        mutableStateOf("")
-    }
-
-    var message by remember {
-        mutableStateOf("")
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "بازنشانی رمز",
-            fontSize = 27.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        Text(
-            text = SECURITY_QUESTION,
-            fontSize = 17.sp
-        )
-
-        Spacer(
-            modifier = Modifier.height(10.dp)
-        )
-
-        OutlinedTextField(
-            value = answer,
-            onValueChange = {
-                answer = it
-            },
-            label = {
-                Text("پاسخ")
-            }
-        )
-
-        Spacer(
-            modifier = Modifier.height(10.dp)
-        )
-
-        OutlinedTextField(
-            value = newPassword,
-            onValueChange = {
-                newPassword = it
-            },
-            label = {
-                Text("رمز جدید")
-            },
-            visualTransformation =
-                PasswordVisualTransformation()
-        )
-
-        Spacer(
-            modifier = Modifier.height(10.dp)
-        )
-
-        OutlinedTextField(
-            value = confirmPassword,
-            onValueChange = {
-                confirmPassword = it
-            },
-            label = {
-                Text("تکرار رمز")
-            },
-            visualTransformation =
-                PasswordVisualTransformation()
-        )
-
-        Spacer(
-            modifier = Modifier.height(16.dp)
-        )
-
-        Button(
-            onClick = {
-
-                when {
-                    !activity.checkSecurityAnswer(
-                        answer
-                    ) -> {
-                        message =
-                            "پاسخ اشتباه است"
-                    }
-
-                    newPassword.length < 6 -> {
-                        message =
-                            "رمز حداقل ۶ کاراکتر باشد"
-                    }
-
-                    newPassword != confirmPassword -> {
-                        message =
-                            "رمزها یکسان نیستند"
-                    }
-
-                    else -> {
-                        activity.changePassword(
-                            newPassword
-                        )
-
-                        message =
-                            "رمز با موفقیت تغییر کرد"
-
-                        onDone()
-                    }
-                }
-            }
-        ) {
-            Text("ذخیره")
-        }
-
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
-        OutlinedButton(
-            onClick = onBack
-        ) {
-            Text("بازگشت")
-        }
-
-        if (message.isNotEmpty()) {
-            Spacer(
-                modifier = Modifier.height(10.dp)
-            )
-
-            Text(
-                text = message
-            )
-        }
-    }
-}
-
-
-/* =========================================================
-   HIDDEN APPS
-   ========================================================= */
-
-@Composable
-fun HiddenAppsScreen(
-    apps: List<InstalledApp>,
-    onLaunch: (String) -> Unit,
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "برنامه‌های مخفی",
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onBack
-            ) {
-                Text("خانه")
-            }
-        }
-
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        if (apps.isEmpty()) {
-            Text(
-                text = "برنامه مخفی پیدا نشد."
-            )
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                horizontalArrangement =
-                    Arrangement.spacedBy(12.dp),
-                verticalArrangement =
-                    Arrangement.spacedBy(20.dp)
-            ) {
-                items(
-                    items = apps,
+                        verticalArrangement =
+                            Arrangement.spacedBy(20.dp)
+                    ) {
+items(
+                    apps,
                     key = { app ->
                         app.packageName
                     }
@@ -1555,13 +783,13 @@ fun HiddenAppsScreen(
                     AppIcon(
                         app = app,
                         onClick = {
-                            onLaunch(
-                                app.packageName
-                            )
+                            onLaunch(app.packageName)
                         }
                     )
                 }
-            }
+            )
         }
     }
 }
+
+        
