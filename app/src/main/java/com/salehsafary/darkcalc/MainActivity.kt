@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -87,9 +86,6 @@ private const val SECURITY_ANSWER =
 private const val TELEGRAM_PACKAGE =
     "org.telegram.messenger"
 
-private const val CALCULATOR_PACKAGE =
-    "darkcalc.calculator"
-
 
 class MainActivity : ComponentActivity() {
 
@@ -98,24 +94,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DarkCalcTheme {
-
-                val apps = remember {
-                    getInstalledApps()
-                }
-
                 DarkCalcLauncher(
-                    apps = apps,
-                    onLaunchApp = ::launchApp
+                    activity = this
                 )
             }
         }
     }
 
-    /*
-     * تمام برنامه‌های قابل اجرا
-     * به‌جز خود لانچر و Telegram
-     */
-    private fun getInstalledApps(): List<InstalledApp> {
+    fun getInstalledApps(): List<InstalledApp> {
 
         val pm = packageManager
 
@@ -146,10 +132,7 @@ class MainActivity : ComponentActivity() {
                 continue
             }
 
-            if (hiddenPackages.contains(
-                    appInfo.packageName
-                )
-            ) {
+            if (appInfo.packageName in hiddenPackages) {
                 continue
             }
 
@@ -172,49 +155,30 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        val uniqueApps =
-            result.distinctBy {
-                app -> app.packageName
-            }
-
-        return uniqueApps.sortedBy {
-            app -> app.label
-        }
+        return result
+            .distinctBy { app -> app.packageName }
+            .sortedBy { app -> app.label }
     }
 
-    /*
-     * برنامه‌های مخفی
-     */
-    private fun getHiddenApps(): List<InstalledApp> {
+    fun getHiddenApps(): List<InstalledApp> {
 
         val pm = packageManager
+        val result = mutableListOf<InstalledApp>()
 
-        val result =
-            mutableListOf<InstalledApp>()
+        try {
 
-        val hiddenPackages =
-            listOf(
-                TELEGRAM_PACKAGE
-            )
+            val appInfo =
+                pm.getApplicationInfo(
+                    TELEGRAM_PACKAGE,
+                    PackageManager.GET_META_DATA
+                )
 
-        for (pkg in hiddenPackages) {
+            val launchIntent =
+                pm.getLaunchIntentForPackage(
+                    TELEGRAM_PACKAGE
+                )
 
-            try {
-
-                val appInfo =
-                    pm.getApplicationInfo(
-                        pkg,
-                        PackageManager.GET_META_DATA
-                    )
-
-                val launchIntent =
-                    pm.getLaunchIntentForPackage(
-                        pkg
-                    )
-
-                if (launchIntent == null) {
-                    continue
-                }
+            if (launchIntent != null) {
 
                 result.add(
                     InstalledApp(
@@ -223,7 +187,8 @@ class MainActivity : ComponentActivity() {
                                 appInfo
                             ).toString(),
 
-                        packageName = pkg,
+                        packageName =
+                            TELEGRAM_PACKAGE,
 
                         icon =
                             drawableToBitmap(
@@ -231,21 +196,31 @@ class MainActivity : ComponentActivity() {
                             )
                     )
                 )
-
-            } catch (
-                _: PackageManager.NameNotFoundException
-            ) {
-                // برنامه نصب نیست
             }
+
+        } catch (
+            _: PackageManager.NameNotFoundException
+        ) {
         }
 
         return result
     }
 
-    /*
-     * تبدیل Drawable به Bitmap
-     */
-    private fun drawableToBitmap(
+    fun launchApp(
+        packageName: String
+    ) {
+
+        val intent =
+            packageManager.getLaunchIntentForPackage(
+                packageName
+            )
+
+        if (intent != null) {
+            startActivity(intent)
+        }
+    }
+
+    fun drawableToBitmap(
         drawable: Drawable
     ): Bitmap {
 
@@ -283,26 +258,6 @@ class MainActivity : ComponentActivity() {
         return bitmap
     }
 
-    /*
-     * اجرای برنامه
-     */
-    private fun launchApp(
-        packageName: String
-    ) {
-
-        val intent =
-            packageManager.getLaunchIntentForPackage(
-                packageName
-            )
-
-        if (intent != null) {
-            startActivity(intent)
-        }
-    }
-
-    /*
-     * بررسی ورود
-     */
     fun checkLogin(
         username: String,
         password: String
@@ -324,22 +279,13 @@ class MainActivity : ComponentActivity() {
                 null
             )
 
-        val passwordHash =
-            sha256(password)
-
-        return if (savedHash == null) {
-
-            password == DEFAULT_PASSWORD
-
-        } else {
-
-            passwordHash == savedHash
+        if (savedHash == null) {
+            return password == DEFAULT_PASSWORD
         }
+
+        return sha256(password) == savedHash
     }
 
-    /*
-     * تغییر رمز
-     */
     fun changePassword(
         newPassword: String
     ) {
@@ -356,9 +302,6 @@ class MainActivity : ComponentActivity() {
             .apply()
     }
 
-    /*
-     * بررسی سؤال امنیتی
-     */
     fun checkSecurityAnswer(
         answer: String
     ): Boolean {
@@ -379,9 +322,6 @@ class MainActivity : ComponentActivity() {
             .lowercase(Locale("fa"))
     }
 
-    /*
-     * SHA-256 برای ذخیره رمز
-     */
     private fun sha256(
         value: String
     ): String {
@@ -395,23 +335,26 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-        return Base64.encodeToString(
-            digest,
-            Base64.NO_WRAP
-        )
+        return digest.joinToString("") {
+            "%02x".format(it)
+        }
     }
 }
 
 
-/* ================================================= */
-/* MAIN LAUNCHER                                    */
-/* ================================================= */
+/* =========================
+   LAUNCHER
+   ========================= */
 
 @Composable
 fun DarkCalcLauncher(
-    apps: List<InstalledApp>,
-    onLaunchApp: (String) -> Unit
+    activity: MainActivity
 ) {
+
+    val apps =
+        remember {
+            activity.getInstalledApps()
+        }
 
     var screen by remember {
         mutableStateOf(
@@ -419,40 +362,21 @@ fun DarkCalcLauncher(
         )
     }
 
-    val context =
-        androidx.compose.ui.platform
-            .LocalContext
-            .current
-
-    val activity =
-        context as MainActivity
-
-    val calculatorIcon =
-        remember {
-
-            activity.drawableToBitmapForCalculator(
-                activity.applicationInfo
-                    .loadIcon(activity.packageManager)
-            )
-        }
-
     val calculator =
         remember {
 
             InstalledApp(
                 label = "ماشین حساب",
-                packageName = CALCULATOR_PACKAGE,
-                icon = calculatorIcon,
+                packageName = "darkcalc.calculator",
+                icon =
+                    activity.drawableToBitmap(
+                        activity.applicationInfo
+                            .loadIcon(
+                                activity.packageManager
+                            )
+                    ),
                 isCalculator = true
             )
-        }
-
-    val homeApps =
-        remember(apps) {
-
-            listOf(
-                calculator
-            ) + apps
         }
 
     Surface(
@@ -470,19 +394,23 @@ fun DarkCalcLauncher(
             LauncherScreen.HOME -> {
 
                 HomeScreen(
-                    apps = homeApps,
+                    apps = apps,
+                    calculator = calculator,
 
-                    onLaunchApp =
-                        onLaunchApp,
-
-                    onOpenDrawer = {
-                        screen =
-                            LauncherScreen.APP_DRAWER
+                    onLaunch = {
+                        activity.launchApp(
+                            it
+                        )
                     },
 
-                    onOpenCalculator = {
+                    onCalculator = {
                         screen =
                             LauncherScreen.CALCULATOR
+                    },
+
+                    onDrawer = {
+                        screen =
+                            LauncherScreen.APP_DRAWER
                     }
                 )
             }
@@ -491,13 +419,15 @@ fun DarkCalcLauncher(
 
                 AppDrawer(
                     apps = apps,
-
                     calculator = calculator,
 
-                    onLaunchApp =
-                        onLaunchApp,
+                    onLaunch = {
+                        activity.launchApp(
+                            it
+                        )
+                    },
 
-                    onOpenCalculator = {
+                    onCalculator = {
                         screen =
                             LauncherScreen.CALCULATOR
                     },
@@ -529,6 +459,8 @@ fun DarkCalcLauncher(
 
                 LoginScreen(
 
+                    activity = activity,
+
                     onBack = {
                         screen =
                             LauncherScreen.CALCULATOR
@@ -549,6 +481,8 @@ fun DarkCalcLauncher(
             LauncherScreen.RESET_PASSWORD -> {
 
                 ResetPasswordScreen(
+
+                    activity = activity,
 
                     onBack = {
                         screen =
@@ -574,8 +508,11 @@ fun DarkCalcLauncher(
                     apps =
                         hiddenApps,
 
-                    onLaunchApp =
-                        onLaunchApp,
+                    onLaunch = {
+                        activity.launchApp(
+                            it
+                        )
+                    },
 
                     onBack = {
                         screen =
@@ -588,77 +525,30 @@ fun DarkCalcLauncher(
 }
 
 
-/* ================================================= */
-/* BITMAP HELPER                                    */
-/* ================================================= */
-
-private fun MainActivity
-    .drawableToBitmapForCalculator(
-        drawable: Drawable
-    ): Bitmap {
-
-    val width =
-        if (drawable.intrinsicWidth > 0)
-            drawable.intrinsicWidth
-        else
-            96
-
-    val height =
-        if (drawable.intrinsicHeight > 0)
-            drawable.intrinsicHeight
-        else
-            96
-
-    val bitmap =
-        Bitmap.createBitmap(
-            width,
-            height,
-            Bitmap.Config.ARGB_8888
-        )
-
-    val canvas =
-        Canvas(bitmap)
-
-    drawable.setBounds(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    )
-
-    drawable.draw(canvas)
-
-    return bitmap
-}
-
-
-/* ================================================= */
-/* HOME SCREEN                                      */
-/* ================================================= */
+/* =========================
+   HOME
+   ========================= */
 
 @Composable
 fun HomeScreen(
     apps: List<InstalledApp>,
-    onLaunchApp: (String) -> Unit,
-    onOpenDrawer: () -> Unit,
-    onOpenCalculator: () -> Unit
+    calculator: InstalledApp,
+    onLaunch: (String) -> Unit,
+    onCalculator: () -> Unit,
+    onDrawer: () -> Unit
 ) {
 
-    val appsPerPage = 20
+    val allApps =
+        listOf(calculator) + apps
 
     val pages =
-        if (apps.isEmpty()) {
-
+        if (allApps.isEmpty()) {
             listOf(emptyList())
-
         } else {
-
-            apps.chunked(
-                appsPerPage
-            )
+            allApps.chunked(20)
         }
 
-    var currentPage by remember {
+    var page by remember {
         mutableStateOf(0)
     }
 
@@ -676,63 +566,92 @@ fun HomeScreen(
                         pages.size
                     ) {
 
-                        var totalDrag = 0f
+                        var drag = 0f
 
                         detectHorizontalDragGestures(
 
-                            onDragStart = {
-                                totalDrag = 0f
-                            },
-
                             onHorizontalDrag = {
                                 change,
-                                dragAmount ->
+                                amount ->
 
                                 change.consume()
 
-                                totalDrag +=
-                                    dragAmount
+                                drag += amount
                             },
 
                             onDragEnd = {
 
                                 if (
-                                    totalDrag < -120f &&
-                                    currentPage <
-                                    pages.lastIndex
+                                    drag < -100 &&
+                                    page < pages.lastIndex
                                 ) {
-
-                                    currentPage++
+                                    page++
                                 }
 
                                 if (
-                                    totalDrag > 120f &&
-                                    currentPage > 0
+                                    drag > 100 &&
+                                    page > 0
                                 ) {
-
-                                    currentPage--
+                                    page--
                                 }
 
-                                totalDrag = 0f
-                            },
-
-                            onDragCancel = {
-                                totalDrag = 0f
+                                drag = 0f
                             }
                         )
                     }
         ) {
 
-            HomePage(
-                apps =
-                    pages[currentPage],
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+            ) {
 
-                onLaunchApp =
-                    onLaunchApp,
+                LiveClock()
 
-                onOpenCalculator =
-                    onOpenCalculator
-            )
+                LiveDate()
+
+                Spacer(
+                    modifier =
+                        Modifier.height(20.dp)
+                )
+
+                LazyVerticalGrid(
+                    columns =
+                        GridCells.Fixed(4),
+
+                    horizontalArrangement =
+                        Arrangement.spacedBy(10.dp),
+
+                    verticalArrangement =
+                        Arrangement.spacedBy(20.dp)
+                ) {
+
+                    items(
+                        pages[page],
+                        key = {
+                            it.packageName
+                        }
+                    ) { app ->
+
+                        AppIcon(
+                            app = app
+                        ) {
+
+                            if (
+                                app.isCalculator
+                            ) {
+                                onCalculator()
+                            } else {
+                                onLaunch(
+                                    app.packageName
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         PageIndicator(
@@ -740,107 +659,23 @@ fun HomeScreen(
                 pages.size,
 
             currentPage =
-                currentPage
+                page
         )
 
         Dock(
-            onOpenDrawer =
-                onOpenDrawer,
+            onDrawer =
+                onDrawer,
 
-            onOpenCalculator =
-                onOpenCalculator
+            onCalculator =
+                onCalculator
         )
     }
 }
 
 
-/* ================================================= */
-/* HOME PAGE                                        */
-/* ================================================= */
-
-@Composable
-fun HomePage(
-    apps: List<InstalledApp>,
-    onLaunchApp: (String) -> Unit,
-    onOpenCalculator: () -> Unit
-) {
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 28.dp
-                )
-    ) {
-
-        LiveClock()
-
-        Spacer(
-            modifier =
-                Modifier.height(4.dp)
-        )
-
-        LiveDate()
-
-        Spacer(
-            modifier =
-                Modifier.height(30.dp)
-        )
-
-        LazyVerticalGrid(
-            columns =
-                GridCells.Fixed(4),
-
-            modifier =
-                Modifier.weight(1f),
-
-            horizontalArrangement =
-                Arrangement.spacedBy(10.dp),
-
-            verticalArrangement =
-                Arrangement.spacedBy(22.dp),
-
-            contentPadding =
-                PaddingValues(
-                    bottom = 20.dp
-                )
-        ) {
-
-            items(
-                items = apps,
-
-                key = {
-                    it.packageName
-                }
-            ) { app ->
-
-                AppIcon(
-                    app = app
-                ) {
-
-                    if (app.isCalculator) {
-
-                        onOpenCalculator()
-
-                    } else {
-
-                        onLaunchApp(
-                            app.packageName
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-/* ================================================= */
-/* PAGE INDICATOR                                   */
-/* ================================================= */
+/* =========================
+   PAGE INDICATOR
+   ========================= */
 
 @Composable
 fun PageIndicator(
@@ -865,8 +700,7 @@ fun PageIndicator(
             Text(
                 text =
                     if (
-                        index ==
-                        currentPage
+                        index == currentPage
                     ) {
                         "●"
                     } else {
@@ -874,4 +708,188 @@ fun PageIndicator(
                     },
 
                 fontSize =
- 
+                    12.sp,
+
+                modifier =
+                    Modifier.padding(
+                        horizontal = 3.dp
+                    )
+            )
+        }
+    }
+
+    Spacer(
+        modifier =
+            Modifier.height(5.dp)
+    )
+}
+
+
+/* =========================
+   CLOCK
+   ========================= */
+
+@Composable
+fun LiveClock() {
+
+    var time by remember {
+        mutableStateOf("")
+    }
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            time =
+                SimpleDateFormat(
+                    "HH:mm",
+                    Locale.getDefault()
+                ).format(Date())
+
+            delay(1000)
+        }
+    }
+
+    Text(
+        text =
+            time,
+
+        fontSize =
+            48.sp,
+
+        fontWeight =
+            FontWeight.Light
+    )
+}
+
+
+/* =========================
+   DATE
+   ========================= */
+
+@Composable
+fun LiveDate() {
+
+    var date by remember {
+        mutableStateOf("")
+    }
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            date =
+                SimpleDateFormat(
+                    "EEEE، d MMMM yyyy",
+                    Locale("fa")
+                ).format(Date())
+
+            delay(60000)
+        }
+    }
+
+    Text(
+        text =
+            date,
+
+        fontSize =
+            14.sp
+    )
+}
+
+
+/* =========================
+   APP ICON
+   ========================= */
+
+@Composable
+fun AppIcon(
+    app: InstalledApp,
+    onClick: () -> Unit
+) {
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    onClick()
+                },
+
+        horizontalAlignment =
+            Alignment.CenterHorizontally
+    ) {
+
+        Image(
+            bitmap =
+                app.icon.asImageBitmap(),
+
+            contentDescription =
+                app.label,
+
+            modifier =
+                Modifier.size(56.dp)
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(5.dp)
+        )
+
+        Text(
+            text =
+                app.label,
+
+            fontSize =
+                11.sp,
+
+            maxLines =
+                1
+        )
+    }
+}
+
+
+/* =========================
+   DOCK
+   ========================= */
+
+@Composable
+fun Dock(
+    onDrawer: () -> Unit,
+    onCalculator: () -> Unit
+) {
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme
+                        .colorScheme
+                        .surface
+                )
+                .padding(
+                    vertical = 10.dp
+                ),
+
+        horizontalArrangement =
+            Arrangement.SpaceEvenly
+    ) {
+
+        DockButton(
+            text = "▦",
+            label = "برنامه‌ها",
+            onClick = onDrawer
+        )
+
+        DockButton(
+            text = "🧮",
+            label = "ماشین حساب",
+            onClick = onCalculator
+        )
+    }
+}
+
+
+@Com
