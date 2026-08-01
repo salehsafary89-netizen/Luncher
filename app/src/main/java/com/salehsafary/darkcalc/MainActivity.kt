@@ -1,66 +1,58 @@
 package com.salehsafary.darkcalc
 
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.Drawable
+import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
-
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-
 import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material3.*
-
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-import kotlinx.coroutines.delay
-
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
+private const val SECRET_CODE = "2580"
+private const val PREFS = "darkcalc_prefs"
+private const val KEY_PASSWORD = "password"
+
+private const val SECURITY_QUESTION =
+    "نام اولین مدرسه شما چه بود؟"
 
 data class InstalledApp(
-    val label: String,
     val packageName: String,
+    val label: String,
     val icon: Bitmap,
     val isCalculator: Boolean = false
 )
 
-
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        private const val PREFS = "darkcalc"
-        private const val PASSWORD = "password"
-        private const val DEFAULT_PASSWORD = "1234"
-    }
+    private var installedApps by mutableStateOf<List<InstalledApp>>(emptyList())
+
+    private var currentScreen by mutableStateOf("apps")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        installedApps = loadApps()
 
         setContent {
             MaterialTheme {
@@ -69,21 +61,86 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun packageNameForSelf(): String {
+    private fun loadApps(): List<InstalledApp> {
+        val pm = packageManager
+
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+
+        val result = mutableListOf<InstalledApp>()
+
+        val infos = pm.queryIntentActivities(
+            intent,
+            PackageManager.MATCH_ALL
+        )
+
+        infos
+            .sortedBy {
+                it.loadLabel(pm).toString().lowercase()
+            }
+            .forEach { info ->
+
+                val packageName =
+                    info.activityInfo.packageName
+
+                if (packageName != packageName()) {
+                    val drawable =
+                        info.loadIcon(pm)
+
+                    val bitmap =
+                        if (drawable is BitmapDrawable) {
+                            drawable.bitmap
+                        } else {
+                            Bitmap.createBitmap(
+                                96,
+                                96,
+                                Bitmap.Config.ARGB_8888
+                            )
+                        }
+
+                    result.add(
+                        InstalledApp(
+                            packageName = packageName,
+                            label = info.loadLabel(pm).toString(),
+                            icon = bitmap
+                        )
+                    )
+                }
+            }
+
+        val calculatorIcon =
+            Bitmap.createBitmap(
+                96,
+                96,
+                Bitmap.Config.ARGB_8888
+            )
+
+        result.add(
+            0,
+            InstalledApp(
+                packageName = "darkcalc.calculator",
+                label = "ماشین حساب",
+                icon = calculatorIcon,
+                isCalculator = true
+            )
+        )
+
+        return result
+    }
+
+    private fun packageName(): String {
         return applicationContext.packageName
     }
 
-    fun launchApp(packageName: String) {
-        try {
-            val intent =
-                packageManager.getLaunchIntentForPackage(
-                    packageName
-                )
+    private fun launchApp(packageName: String) {
+        val intent =
+            packageManager.getLaunchIntentForPackage(
+                packageName
+            )
 
-            if (intent != null) {
-                startActivity(intent)
-            }
-        } catch (_: Exception) {
+        if (intent != null) {
+            startActivity(intent)
         }
     }
 
@@ -91,84 +148,54 @@ class MainActivity : ComponentActivity() {
         username: String,
         password: String
     ): Boolean {
-        val saved =
+
+        val savedPassword =
             getSharedPreferences(
                 PREFS,
-                MODE_PRIVATE
+                Context.MODE_PRIVATE
             ).getString(
-                PASSWORD,
-                DEFAULT_PASSWORD
+                KEY_PASSWORD,
+                "123456"
             )
 
         return username.isNotBlank() &&
-                password == saved
+                password == savedPassword
     }
 
-    fun changePassword(password: String) {
+    fun checkSecurityAnswer(
+        answer: String
+    ): Boolean {
+        return answer.trim() == "مدرسه"
+    }
+
+    fun changePassword(
+        password: String
+    ) {
         getSharedPreferences(
             PREFS,
-            MODE_PRIVATE
+            Context.MODE_PRIVATE
         )
             .edit()
-            .putString(PASSWORD, password)
+            .putString(
+                KEY_PASSWORD,
+                password
+            )
             .apply()
     }
-}
 
-@Composable
-fun DarkCalcApp() {
+    @Composable
+    private fun DarkCalcApp() {
 
-    var screen by remember {
-        mutableStateOf("home")
-    }
-
-    var apps by remember {
-        mutableStateOf<List<InstalledApp>>(
-            emptyList()
-        )
-    }
-
-    val activity =
-        androidx.compose.ui.platform.LocalContext
-            .current as MainActivity
-
-    LaunchedEffect(Unit) {
-        apps = activity.getAppsForUi()
-    }
-
-    AnimatedContent(
-        targetState = screen,
-        transitionSpec = {
-            slideInHorizontally { it } togetherWith
-                    slideOutHorizontally { -it }
-        },
-        label = "screen"
-    ) { current ->
-
-        when (current) {
-
-            "home" -> {
-                HomeScreen(
-                    onApps = {
-                        screen = "apps"
-                    },
-                    onCalculator = {
-                        screen = "calculator"
-                    }
-                )
-            }
+        when (currentScreen) {
 
             "apps" -> {
-                AppDrawer(
-                    apps = apps,
+                AppHomeScreen(
+                    apps = installedApps,
                     onLaunch = {
-                        activity.launchApp(it)
+                        launchApp(it)
                     },
                     onCalculator = {
-                        screen = "calculator"
-                    },
-                    onBack = {
-                        screen = "home"
+                        currentScreen = "calculator"
                     }
                 )
             }
@@ -176,7 +203,49 @@ fun DarkCalcApp() {
             "calculator" -> {
                 CalculatorScreen(
                     onBack = {
-                        screen = "apps"
+                        currentScreen = "apps"
+                    },
+                    onSecretCode = {
+                        currentScreen = "login"
+                    }
+                )
+            }
+
+            "login" -> {
+                LoginScreen(
+                    activity = this,
+                    onBack = {
+                        currentScreen = "calculator"
+                    },
+                    onSuccess = {
+                        currentScreen = "hidden"
+                    },
+                    onReset = {
+                        currentScreen = "reset"
+                    }
+                )
+            }
+
+            "reset" -> {
+                ResetPasswordScreen(
+                    activity = this,
+                    onBack = {
+                        currentScreen = "login"
+                    },
+                    onDone = {
+                        currentScreen = "login"
+                    }
+                )
+            }
+
+            "hidden" -> {
+                HiddenAppsScreen(
+                    apps = emptyList(),
+                    onLaunch = {
+                        launchApp(it)
+                    },
+                    onBack = {
+                        currentScreen = "apps"
                     }
                 )
             }
@@ -184,194 +253,139 @@ fun DarkCalcApp() {
     }
 }
 
-
-private fun MainActivity.getAppsForUi():
-        List<InstalledApp> {
-
-    val pm = packageManager
-
-    val intent =
-        Intent(Intent.ACTION_MAIN).apply {
-            addCategory(
-                Intent.CATEGORY_LAUNCHER
-            )
-        }
-
-    return pm
-        .queryIntentActivities(intent, 0)
-        .mapNotNull { info ->
-
-            val pkg =
-                info.activityInfo.packageName
-
-            if (pkg == packageName) {
-                null
-            } else {
-
-                val drawable =
-                    info.loadIcon(pm)
-
-                val width =
-                    if (drawable.intrinsicWidth > 0)
-                        drawable.intrinsicWidth
-                    else
-                        96
-
-                val height =
-                    if (drawable.intrinsicHeight > 0)
-                        drawable.intrinsicHeight
-                    else
-                        96
-
-                val bitmap =
-                    Bitmap.createBitmap(
-                        width,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
-
-                val canvas =
-                    Canvas(bitmap)
-
-                drawable.setBounds(
-                    0,
-                    0,
-                    canvas.width,
-                    canvas.height
-                )
-
-                drawable.draw(canvas)
-
-                InstalledApp(
-                    label =
-                        info.loadLabel(pm)
-                            .toString(),
-                    packageName = pkg,
-                    icon = bitmap
-                )
-            }
-        }
-        .distinctBy {
-            it.packageName
-        }
-        .sortedBy {
-            it.label.lowercase()
-        }
-}
-
 @Composable
-fun HomeScreen(
-    onApps: () -> Unit,
+fun AppHomeScreen(
+    apps: List<InstalledApp>,
+    onLaunch: (String) -> Unit,
     onCalculator: () -> Unit
 ) {
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                MaterialTheme
-                    .colorScheme
-                    .background
+            .padding(
+                horizontal = 12.dp,
+                vertical = 18.dp
             )
-            .padding(20.dp)
     ) {
 
         Column(
-            modifier =
-                Modifier.fillMaxSize(),
-            horizontalAlignment =
-                Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize()
         ) {
 
             Spacer(
-                modifier =
-                    Modifier.height(55.dp)
+                modifier = Modifier.height(18.dp)
             )
 
             LiveClock()
 
-            Spacer(
-                modifier =
-                    Modifier.height(6.dp)
-            )
-
             LiveDate()
 
             Spacer(
-                modifier =
-                    Modifier.height(50.dp)
+                modifier = Modifier.height(24.dp)
             )
 
-            Text(
-                text = "DarkCalc",
-                fontSize = 25.sp,
-                fontWeight =
-                    FontWeight.Bold
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(30.dp)
-            )
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = 12.dp,
+                    bottom = 24.dp,
+                    start = 4.dp,
+                    end = 4.dp
+                ),
                 horizontalArrangement =
-                    Arrangement.spacedBy(14.dp)
+                    Arrangement.spacedBy(10.dp),
+                verticalArrangement =
+                    Arrangement.spacedBy(24.dp)
             ) {
 
-                LauncherButton(
-                    text = "برنامه‌ها",
-                    modifier =
-                        Modifier.weight(1f),
-                    onClick = onApps
-                )
+                items(
+                    items = apps,
+                    key = {
+                        it.packageName
+                    }
+                ) { app ->
 
-                LauncherButton(
-                    text = "ماشین حساب",
-                    modifier =
-                        Modifier.weight(1f),
-                    onClick = onCalculator
-                )
+                    AppIcon(
+                        app = app,
+                        onClick = {
+
+                            if (app.isCalculator) {
+                                onCalculator()
+                            } else {
+                                onLaunch(
+                                    app.packageName
+                                )
+                            }
+                        }
+                    )
+                }
             }
-
-            Spacer(
-                modifier =
-                    Modifier.weight(1f)
-            )
-
-            Text(
-                text = "صفحه اصلی",
-                fontSize = 12.sp
-            )
         }
     }
 }
 
-
 @Composable
-fun LauncherButton(
-    text: String,
-    modifier: Modifier,
+fun AppIcon(
+    app: InstalledApp,
     onClick: () -> Unit
 ) {
 
-    Button(
-        onClick = onClick,
-        modifier =
-            modifier.height(58.dp),
-        shape =
-            RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                onClick()
+            },
+        horizontalAlignment =
+            Alignment.CenterHorizontally
     ) {
 
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(
+                    MaterialTheme
+                        .colorScheme
+                        .surfaceVariant,
+                    RoundedCornerShape(16.dp)
+                ),
+            contentAlignment =
+                Alignment.Center
+        ) {
+
+            if (app.isCalculator) {
+
+                Text(
+                    text = "⌨",
+                    fontSize = 32.sp
+                )
+
+            } else {
+
+                Image(
+                    bitmap =
+                        app.icon.asImageBitmap(),
+                    contentDescription =
+                        app.label,
+                    modifier =
+                        Modifier.size(58.dp)
+                )
+            }
+        }
+
+        Spacer(
+            modifier = Modifier.height(6.dp)
+        )
+
         Text(
-            text = text,
-            fontSize = 15.sp
+            text = app.label,
+            fontSize = 11.sp,
+            maxLines = 1
         )
     }
 }
-
 
 @Composable
 fun LiveClock() {
@@ -396,12 +410,10 @@ fun LiveClock() {
 
     Text(
         text = time,
-        fontSize = 48.sp,
-        fontWeight =
-            FontWeight.Light
+        fontSize = 44.sp,
+        modifier = Modifier.fillMaxWidth()
     )
 }
-
 
 @Composable
 fun LiveDate() {
@@ -416,7 +428,7 @@ fun LiveDate() {
 
             date =
                 SimpleDateFormat(
-                    "EEEE، d MMMM",
+                    "EEEE، d MMMM yyyy",
                     Locale("fa")
                 ).format(Date())
 
@@ -426,191 +438,15 @@ fun LiveDate() {
 
     Text(
         text = date,
-        fontSize = 14.sp
+        fontSize = 14.sp,
+        modifier = Modifier.fillMaxWidth()
     )
 }
-
-@Composable
-fun AppDrawer(
-    apps: List<InstalledApp>,
-    onLaunch: (String) -> Unit,
-    onCalculator: () -> Unit,
-    onBack: () -> Unit
-) {
-
-    val calculator =
-        InstalledApp(
-            label = "ماشین حساب",
-            packageName =
-                "darkcalc.calculator",
-            icon =
-                createCalculatorIcon(),
-            isCalculator = true
-        )
-
-    val allApps =
-        listOf(calculator) + apps
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-
-        Row(
-            modifier =
-                Modifier.fillMaxWidth(),
-            horizontalArrangement =
-                Arrangement.SpaceBetween,
-            verticalAlignment =
-                Alignment.CenterVertically
-        ) {
-
-            Text(
-                text = "برنامه‌ها",
-                fontSize = 26.sp,
-                fontWeight =
-                    FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onBack
-            ) {
-                Text("خانه")
-            }
-        }
-
-        Spacer(
-            modifier =
-                Modifier.height(20.dp)
-        )
-
-        LazyVerticalGrid(
-            columns =
-                GridCells.Fixed(4),
-            modifier =
-                Modifier.fillMaxSize(),
-            horizontalArrangement =
-                Arrangement.spacedBy(8.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(20.dp)
-        ) {
-
-            items(
-                items = allApps
-            ) { app ->
-
-                AppIcon(
-                    app = app,
-                    onClick = {
-
-                        if (app.isCalculator) {
-                            onCalculator()
-                        } else {
-                            onLaunch(
-                                app.packageName
-                            )
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-
-@Composable
-fun AppIcon(
-    app: InstalledApp,
-    onClick: () -> Unit
-) {
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    onClick()
-                }
-                .padding(4.dp),
-        horizontalAlignment =
-            Alignment.CenterHorizontally
-    ) {
-
-        Image(
-            bitmap =
-                app.icon.asImageBitmap(),
-            contentDescription =
-                app.label,
-            modifier =
-                Modifier.size(58.dp)
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(5.dp)
-        )
-
-        Text(
-            text = app.label,
-            fontSize = 11.sp,
-            maxLines = 1
-        )
-    }
-}
-
-fun createCalculatorIcon(): Bitmap {
-
-    val size = 96
-
-    val bitmap =
-        Bitmap.createBitmap(
-            size,
-            size,
-            Bitmap.Config.ARGB_8888
-        )
-
-    val canvas = Canvas(bitmap)
-
-    val paint =
-        android.graphics.Paint(
-            android.graphics.Paint
-                .ANTI_ALIAS_FLAG
-        )
-
-    paint.color =
-        android.graphics.Color.DKGRAY
-
-    canvas.drawRect(
-        0f,
-        0f,
-        size.toFloat(),
-        size.toFloat(),
-        paint
-    )
-
-    paint.color =
-        android.graphics.Color.WHITE
-
-    paint.textSize = 55f
-
-    paint.textAlign =
-        android.graphics.Paint.Align.CENTER
-
-    canvas.drawText(
-        "÷",
-        size / 2f,
-        66f,
-        paint
-    )
-
-    return bitmap
-}
-
 
 @Composable
 fun CalculatorScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSecretCode: () -> Unit
 ) {
 
     var display by remember {
@@ -626,8 +462,17 @@ fun CalculatorScreen(
             }
 
             "=" -> {
-                display =
-                    calculate(display)
+
+                if (display == SECRET_CODE) {
+
+                    display = ""
+                    onSecretCode()
+
+                } else {
+
+                    display =
+                        calculateSimple(display)
+                }
             }
 
             else -> {
@@ -636,110 +481,90 @@ fun CalculatorScreen(
         }
     }
 
-    val keys =
-        listOf(
-            listOf(
-                "7", "8", "9", "÷"
-            ),
-            listOf(
-                "4", "5", "6", "×"
-            ),
-            listOf(
-                "1", "2", "3", "−"
-            ),
-            listOf(
-                "0", "C", "=", "+"
-            )
-        )
+    val rows = listOf(
+        listOf("7", "8", "9", "÷"),
+        listOf("4", "5", "6", "×"),
+        listOf("1", "2", "3", "−"),
+        listOf("0", "C", "=", "+")
+    )
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(18.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
 
-        Row(
-            modifier =
-                Modifier.fillMaxWidth(),
-            horizontalArrangement =
-                Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment =
+                Alignment.CenterHorizontally
         ) {
 
             Text(
-                text = "ماشین حساب",
-                fontSize = 25.sp,
-                fontWeight =
-                    FontWeight.Bold
+                text =
+                    if (display.isEmpty()) {
+                        "0"
+                    } else {
+                        display
+                    },
+                fontSize = 42.sp,
+                modifier =
+                    Modifier.fillMaxWidth()
             )
 
-            OutlinedButton(
+            Spacer(
+                modifier = Modifier.height(24.dp)
+            )
+
+            rows.forEach { row ->
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+
+                    row.forEach { value ->
+
+                        Button(
+                            onClick = {
+                                press(value)
+                            },
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .height(64.dp)
+                        ) {
+
+                            Text(
+                                text = value,
+                                fontSize = 21.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            TextButton(
                 onClick = onBack
             ) {
                 Text("برنامه‌ها")
             }
         }
-
-        Spacer(
-            modifier =
-                Modifier.height(30.dp)
-        )
-
-        Text(
-            text =
-                if (display.isEmpty())
-                    "0"
-                else
-                    display,
-            fontSize = 40.sp,
-            modifier =
-                Modifier.fillMaxWidth()
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(20.dp)
-        )
-
-        keys.forEach { row ->
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(8.dp)
-            ) {
-
-                row.forEach { key ->
-
-                    Button(
-                        onClick = {
-                            press(key)
-                        },
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .height(60.dp)
-                    ) {
-
-                        Text(
-                            text = key,
-                            fontSize = 20.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(
-                modifier =
-                    Modifier.height(8.dp)
-            )
-        }
     }
 }
 
-
-fun calculate(
+fun calculateSimple(
     expression: String
 ): String {
 
@@ -749,62 +574,48 @@ fun calculate(
 
     return try {
 
-        val e =
+        val normalized =
             expression
                 .replace("×", "*")
                 .replace("÷", "/")
                 .replace("−", "-")
 
-        val op =
-            listOf(
-                '+',
-                '-',
-                '*',
-                '/'
-            ).firstOrNull {
-                e.contains(it)
-            }
-                ?: return e
+        val operator =
+            listOf('+', '-', '*', '/')
+                .firstOrNull {
+                    normalized.contains(it)
+                }
+                ?: return normalized
 
         val parts =
-            e.split(op)
+            normalized.split(operator)
 
         if (parts.size != 2) {
             return "خطا"
         }
 
-        val a =
-            parts[0]
-                .trim()
-                .toDouble()
+        val first =
+            parts[0].trim().toDouble()
 
-        val b =
-            parts[1]
-                .trim()
-                .toDouble()
+        val second =
+            parts[1].trim().toDouble()
 
         val result =
-            when (op) {
+            when (operator) {
 
-                '+' -> {
-                    a + b
-                }
+                '+' -> first + second
 
-                '-' -> {
-                    a - b
-                }
+                '-' -> first - second
 
-                '*' -> {
-                    a * b
-                }
+                '*' -> first * second
 
                 '/' -> {
 
-                    if (b == 0.0) {
+                    if (second == 0.0) {
                         return "خطا"
                     }
 
-                    a / b
+                    first / second
                 }
 
                 else -> {
@@ -813,14 +624,17 @@ fun calculate(
             }
 
         if (!result.isFinite()) {
+
             "خطا"
+
         } else if (
             result % 1.0 == 0.0
         ) {
-            result
-                .toLong()
-                .toString()
+
+            result.toLong().toString()
+
         } else {
+
             result.toString()
         }
 
@@ -851,20 +665,15 @@ fun LoginScreen(
     }
 
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .imePadding()
-                .padding(
-                    horizontal = 28.dp
-                )
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .padding(horizontal = 28.dp),
+        contentAlignment = Alignment.Center
     ) {
 
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment =
                 Alignment.CenterHorizontally
         ) {
@@ -873,12 +682,12 @@ fun LoginScreen(
                 text = "ورود",
                 fontSize = 30.sp,
                 fontWeight =
-                    FontWeight.Bold
+                    androidx.compose.ui.text.font
+                        .FontWeight.Bold
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(30.dp)
+                modifier = Modifier.height(30.dp)
             )
 
             OutlinedTextField(
@@ -896,8 +705,7 @@ fun LoginScreen(
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(14.dp)
+                modifier = Modifier.height(14.dp)
             )
 
             OutlinedTextField(
@@ -917,8 +725,7 @@ fun LoginScreen(
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(22.dp)
+                modifier = Modifier.height(22.dp)
             )
 
             Button(
@@ -940,10 +747,9 @@ fun LoginScreen(
                             "نام کاربری یا رمز عبور اشتباه است"
                     }
                 },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 shape =
                     RoundedCornerShape(12.dp)
             ) {
@@ -955,8 +761,7 @@ fun LoginScreen(
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(8.dp)
+                modifier = Modifier.height(6.dp)
             )
 
             TextButton(
@@ -964,8 +769,7 @@ fun LoginScreen(
             ) {
 
                 Text(
-                    text =
-                        "فراموشی رمز عبور",
+                    text = "فراموشی رمز عبور",
                     fontSize = 14.sp
                 )
             }
@@ -973,8 +777,7 @@ fun LoginScreen(
             if (error.isNotEmpty()) {
 
                 Spacer(
-                    modifier =
-                        Modifier.height(10.dp)
+                    modifier = Modifier.height(8.dp)
                 )
 
                 Text(
@@ -986,21 +789,16 @@ fun LoginScreen(
                     fontSize = 13.sp
                 )
             }
-        }
 
-        TextButton(
-            onClick = onBack,
-            modifier =
-                Modifier
-                    .align(
-                        Alignment.BottomCenter
-                    )
-                    .padding(
-                        bottom = 18.dp
-                    )
-        ) {
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
 
-            Text("بازگشت")
+            TextButton(
+                onClick = onBack
+            ) {
+                Text("بازگشت")
+            }
         }
     }
 }
@@ -1028,170 +826,168 @@ fun ResetPasswordScreen(
         mutableStateOf("")
     }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .imePadding()
-                .padding(24.dp),
-        horizontalAlignment =
-            Alignment.CenterHorizontally
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
     ) {
 
-        Spacer(
-            modifier =
-                Modifier.height(55.dp)
-        )
-
-        Text(
-            text = "بازنشانی رمز",
-            fontSize = 27.sp,
-            fontWeight =
-                FontWeight.Bold
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(24.dp)
-        )
-
-        Text(
-            text =
-                "پاسخ امنیتی",
-            fontSize = 17.sp
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(12.dp)
-        )
-
-        OutlinedTextField(
-            value = answer,
-            onValueChange = {
-                answer = it
-                message = ""
-            },
-            modifier =
-                Modifier.fillMaxWidth(),
-            label = {
-                Text("پاسخ")
-            },
-            singleLine = true
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(10.dp)
-        )
-
-        OutlinedTextField(
-            value = newPassword,
-            onValueChange = {
-                newPassword = it
-                message = ""
-            },
-            modifier =
-                Modifier.fillMaxWidth(),
-            label = {
-                Text("رمز جدید")
-            },
-            singleLine = true,
-            visualTransformation =
-                PasswordVisualTransformation()
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(10.dp)
-        )
-
-        OutlinedTextField(
-            value = confirmPassword,
-            onValueChange = {
-                confirmPassword = it
-                message = ""
-            },
-            modifier =
-                Modifier.fillMaxWidth(),
-            label = {
-                Text("تکرار رمز")
-            },
-            singleLine = true,
-            visualTransformation =
-                PasswordVisualTransformation()
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
-        )
-
-        Button(
-            onClick = {
-
-                if (answer.isBlank()) {
-
-                    message =
-                        "پاسخ را وارد کنید"
-
-                } else if (
-                    newPassword.length < 4
-                ) {
-
-                    message =
-                        "رمز کوتاه است"
-
-                } else if (
-                    newPassword !=
-                    confirmPassword
-                ) {
-
-                    message =
-                        "رمزها یکسان نیستند"
-
-                } else {
-
-                    activity.changePassword(
-                        newPassword
-                    )
-
-                    onDone()
-                }
-            },
-            modifier =
-                Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment =
+                Alignment.CenterHorizontally
         ) {
 
-            Text("ذخیره رمز جدید")
-        }
-
-        Spacer(
-            modifier =
-                Modifier.height(8.dp)
-        )
-
-        OutlinedButton(
-            onClick = onBack
-        ) {
-
-            Text("بازگشت")
-        }
-
-        if (message.isNotEmpty()) {
+            Text(
+                text = "بازنشانی رمز",
+                fontSize = 28.sp,
+                fontWeight =
+                    androidx.compose.ui.text.font
+                        .FontWeight.Bold
+            )
 
             Spacer(
-                modifier =
-                    Modifier.height(12.dp)
+                modifier = Modifier.height(22.dp)
             )
 
             Text(
-                text = message,
-                color =
-                    MaterialTheme
-                        .colorScheme
-                        .error
+                text = SECURITY_QUESTION,
+                fontSize = 16.sp
             )
+
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
+
+            OutlinedTextField(
+                value = answer,
+                onValueChange = {
+                    answer = it
+                    message = ""
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                label = {
+                    Text("پاسخ")
+                },
+                singleLine = true
+            )
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            OutlinedTextField(
+                value = newPassword,
+                onValueChange = {
+                    newPassword = it
+                    message = ""
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                label = {
+                    Text("رمز جدید")
+                },
+                singleLine = true,
+                visualTransformation =
+                    PasswordVisualTransformation()
+            )
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            OutlinedTextField(
+                value = confirmPassword,
+                onValueChange = {
+                    confirmPassword = it
+                    message = ""
+                },
+                modifier =
+                    Modifier.fillMaxWidth(),
+                label = {
+                    Text("تکرار رمز")
+                },
+                singleLine = true,
+                visualTransformation =
+                    PasswordVisualTransformation()
+            )
+
+            Spacer(
+                modifier = Modifier.height(18.dp)
+            )
+
+            Button(
+                onClick = {
+
+                    when {
+
+                        !activity
+                            .checkSecurityAnswer(
+                                answer
+                            ) -> {
+
+                            message =
+                                "پاسخ اشتباه است"
+                        }
+
+                        newPassword.length < 6 -> {
+
+                            message =
+                                "رمز باید حداقل ۶ کاراکتر باشد"
+                        }
+
+                        newPassword !=
+                                confirmPassword -> {
+
+                            message =
+                                "رمزها یکسان نیستند"
+                        }
+
+                        else -> {
+
+                            activity.changePassword(
+                                newPassword
+                            )
+
+                            onDone()
+                        }
+                    }
+                },
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+
+                Text("ذخیره رمز جدید")
+            }
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
+            OutlinedButton(
+                onClick = onBack
+            ) {
+
+                Text("بازگشت")
+            }
+
+            if (message.isNotEmpty()) {
+
+                Spacer(
+                    modifier = Modifier.height(10.dp)
+                )
+
+                Text(
+                    text = message,
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .error
+                )
+            }
         }
     }
 }
@@ -1203,128 +999,261 @@ fun HiddenAppsScreen(
     onBack: () -> Unit
 ) {
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(18.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(18.dp)
     ) {
 
-        Row(
-            modifier =
-                Modifier.fillMaxWidth(),
-            horizontalArrangement =
-                Arrangement.SpaceBetween,
-            verticalAlignment =
-                Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
 
-            Text(
-                text =
-                    "برنامه‌های مخفی",
-                fontSize = 25.sp,
-                fontWeight =
-                    FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onBack
-            ) {
-
-                Text("خانه")
-            }
-        }
-
-        Spacer(
-            modifier =
-                Modifier.height(20.dp)
-        )
-
-        if (apps.isEmpty()) {
-
-            Box(
+            Row(
                 modifier =
-                    Modifier.fillMaxSize(),
-                contentAlignment =
-                    Alignment.Center
+                    Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.SpaceBetween,
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
 
                 Text(
-                    text =
-                        "برنامه مخفی پیدا نشد."
+                    text = "برنامه‌های مخفی",
+                    fontSize = 25.sp,
+                    fontWeight =
+                        androidx.compose.ui.text.font
+                            .FontWeight.Bold
                 )
+
+                OutlinedButton(
+                    onClick = onBack
+                ) {
+                    Text("خانه")
+                }
             }
 
-        } else {
+            Spacer(
+                modifier = Modifier.height(20.dp)
+            )
 
-            LazyVerticalGrid(
-                columns =
-                    GridCells.Fixed(3),
-                horizontalArrangement =
-                    Arrangement.spacedBy(12.dp),
-                verticalArrangement =
-                    Arrangement.spacedBy(20.dp)
-            ) {
+            if (apps.isEmpty()) {
 
-                items(
-                    items = apps,
-                    key = {
-                        it.packageName
-                    }
-                ) { app ->
+                Box(
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
 
-                    AppIcon(
-                        app = app,
-                        onClick = {
-                            onLaunch(
-                                app.packageName
-                            )
-                        }
+                    Text(
+                        text =
+                            "برنامه مخفی پیدا نشد."
                     )
+                }
+
+            } else {
+
+                LazyVerticalGrid(
+                    columns =
+                        GridCells.Fixed(4),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(10.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(22.dp)
+                ) {
+
+                    items(
+                        items = apps,
+                        key = {
+                            it.packageName
+                        }
+                    ) { app ->
+
+                        AppIcon(
+                            app = app,
+                            onClick = {
+                                onLaunch(
+                                    app.packageName
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+@Composable
+fun PageIndicator(
+    count: Int,
+    current: Int
+) {
 
-/*
- * این بخش فقط برای اینکه فایل
- * در صورت استفاده از صفحه ورود
- * تابع‌های لازم را داشته باشد.
- */
+    if (count <= 1) {
+        return
+    }
 
-fun MainActivity.checkSecurityAnswer(
-    answer: String
-): Boolean {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            Arrangement.Center
+    ) {
 
-    return answer.isNotBlank()
+        repeat(count) { index ->
+
+            Text(
+                text =
+                    if (index == current) {
+                        "●"
+                    } else {
+                        "○"
+                    },
+                fontSize = 11.sp,
+                modifier =
+                    Modifier.padding(
+                        horizontal = 3.dp
+                    )
+            )
+        }
+    }
 }
 
+@Composable
+fun SimpleBackButton(
+    text: String = "بازگشت",
+    onClick: () -> Unit
+) {
 
-/*
- * پایان قابلیت‌های ورود.
- */
+    TextButton(
+        onClick = onClick
+    ) {
 
-/*
- * پایان فایل MainActivity.kt
- *
- * نکته:
- * ماشین حساب در AppDrawer به عنوان
- * یک آیکون مستقل نمایش داده می‌شود
- * و داخل Dock قرار نگرفته است.
- *
- * صفحه‌ها نیز با AnimatedContent
- * به صورت افقی جابه‌جا می‌شوند.
- */
+        Text(text)
+    }
+}
 
+private fun normalizeInput(
+    value: String
+): String {
 
-/*
- * اگر بعداً خواستی LoginScreen را به
- * مسیر اصلی برنامه وصل کنی، فقط state
- * مربوط به screen در DarkCalcApp را
- * تغییر بده.
- *
- * فعلاً این نسخه عمداً ساده نگه داشته
- * شده تا ساختار اصلی بدون خطا باشد.
- */
+    return value
+        .replace("۰", "0")
+        .replace("۱", "1")
+        .replace("۲", "2")
+        .replace("۳", "3")
+        .replace("۴", "4")
+        .replace("۵", "5")
+        .replace("۶", "6")
+        .replace("۷", "7")
+        .replace("۸", "8")
+        .replace("۹", "9")
+}
+
+private fun createCalculatorBitmap(): Bitmap {
+
+    return Bitmap.createBitmap(
+        96,
+        96,
+        Bitmap.Config.ARGB_8888
+    )
+}
+
+private fun safeLabel(
+    context: Context,
+    packageName: String
+): String {
+
+    return try {
+
+        val info =
+            context.packageManager
+                .getApplicationInfo(
+                    packageName,
+                    0
+                )
+
+        context.packageManager
+            .getApplicationLabel(info)
+            .toString()
+
+    } catch (_: Exception) {
+
+        packageName
+    }
+}
+
+private fun safeIcon(
+    context: Context,
+    packageName: String
+): Bitmap {
+
+    return try {
+
+        val drawable =
+            context.packageManager
+                .getApplicationIcon(
+                    packageName
+                )
+
+        if (drawable is BitmapDrawable) {
+
+            drawable.bitmap
+
+        } else {
+
+            Bitmap.createBitmap(
+                96,
+                96,
+                Bitmap.Config.ARGB_8888
+            )
+        }
+
+    } catch (_: Exception) {
+
+        Bitmap.createBitmap(
+            96,
+            96,
+            Bitmap.Config.ARGB_8888
+        )
+    }
+}
+
+@Composable
+fun CenteredTitle(
+    text: String
+) {
+
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+
+        Text(
+            text = text,
+            fontSize = 26.sp,
+            fontWeight =
+                androidx.compose.ui.text.font
+                    .FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun EmptyState(
+    text: String
+) {
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+
+        Text(
+            text = text,
+            fontSize = 16.sp
+        )
+    }
+}
