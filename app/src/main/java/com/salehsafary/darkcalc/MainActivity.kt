@@ -1,64 +1,764 @@
-/* =========================================================
-   PAGE INDICATOR
-   ========================================================= */
+package com.salehsafary.darkcalc
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private const val SECRET_CODE = "2580"
+private const val DEFAULT_PASSWORD = "123456"
+private const val SECURITY_QUESTION = "نام اولین مدرسه شما چه بود؟"
+
+data class InstalledApp(
+    val label: String,
+    val packageName: String,
+    val icon: Bitmap,
+    val isCalculator: Boolean = false
+)
+
+enum class Screen {
+    HOME,
+    DRAWER,
+    CALCULATOR,
+    LOGIN,
+    RESET,
+    HIDDEN
+}
+
+class MainActivity : ComponentActivity() {
+
+    private var allApps: List<InstalledApp> = emptyList()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        allApps = loadInstalledApps()
+
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    DarkCalcApp(this)
+                }
+            }
+        }
+    }
+
+    private fun loadInstalledApps(): List<InstalledApp> {
+        val pm = packageManager
+
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+
+        val resolved = pm.queryIntentActivities(
+            intent,
+            PackageManager.MATCH_ALL
+        )
+
+        return resolved
+            .mapNotNull { info ->
+
+                val packageName =
+                    info.activityInfo.packageName
+
+                if (packageName == packageName()) {
+                    return@mapNotNull null
+                }
+
+                val label =
+                    info.loadLabel(pm)?.toString()
+                        ?: return@mapNotNull null
+
+                val drawable =
+                    info.loadIcon(pm)
+
+                InstalledApp(
+                    label = label,
+                    packageName = packageName,
+                    icon = drawableToBitmap(drawable)
+                )
+            }
+            .distinctBy {
+                it.packageName
+            }
+            .sortedBy {
+                it.label.lowercase()
+            }
+    }
+
+    private fun packageName(): String {
+        return applicationContext.packageName
+    }
+
+    private fun drawableToBitmap(
+        drawable: Drawable
+    ): Bitmap {
+
+        val width =
+            if (drawable.intrinsicWidth > 0)
+                drawable.intrinsicWidth
+            else 96
+
+        val height =
+            if (drawable.intrinsicHeight > 0)
+                drawable.intrinsicHeight
+            else 96
+
+        val bitmap =
+            Bitmap.createBitmap(
+                width,
+                height,
+                Bitmap.Config.ARGB_8888
+            )
+
+        val canvas = Canvas(bitmap)
+
+        drawable.setBounds(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        )
+
+        drawable.draw(canvas)
+
+        return bitmap
+    }
+
+    fun launchApp(packageName: String) {
+
+        val intent =
+            packageManager.getLaunchIntentForPackage(
+                packageName
+            )
+
+        if (intent != null) {
+            startActivity(intent)
+        }
+    }
+
+    fun checkLogin(
+        username: String,
+        password: String
+    ): Boolean {
+
+        val prefs =
+            getSharedPreferences(
+                "darkcalc",
+                Context.MODE_PRIVATE
+            )
+
+        val savedPassword =
+            prefs.getString(
+                "password",
+                DEFAULT_PASSWORD
+            )
+
+        return username.isNotBlank() &&
+                password == savedPassword
+    }
+
+    fun checkSecurityAnswer(
+        answer: String
+    ): Boolean {
+
+        val prefs =
+            getSharedPreferences(
+                "darkcalc",
+                Context.MODE_PRIVATE
+            )
+
+        val savedAnswer =
+            prefs.getString(
+                "security_answer",
+                ""
+            )
+
+        return answer.trim() == savedAnswer
+    }
+
+    fun changePassword(
+        password: String
+    ) {
+
+        getSharedPreferences(
+            "darkcalc",
+            Context.MODE_PRIVATE
+        )
+            .edit()
+            .putString(
+                "password",
+                password
+            )
+            .apply()
+    }
+}
+
+@Composable
+fun DarkCalcApp(
+    activity: MainActivity
+) {
+
+    var screen by remember {
+        mutableStateOf(Screen.HOME)
+    }
+
+    val calculator =
+        InstalledApp(
+            label = "ماشین حساب",
+            packageName = "darkcalc.calculator",
+            icon = createCalculatorBitmap(),
+            isCalculator = true
+        )
+
+    val apps =
+        remember {
+            activity
+                .let {
+                    getAppsWithoutHidden(it)
+                }
+        }
+
+    val hiddenApps =
+        remember {
+            emptyList<InstalledApp>()
+        }
+
+    AnimatedContent(
+        targetState = screen,
+        transitionSpec = {
+
+            if (targetState.ordinal >
+                initialState.ordinal
+            ) {
+
+                (
+                    slideInHorizontally(
+                        animationSpec =
+                            tween(280),
+                        initialOffsetX = {
+                            it
+                        }
+                    ) + fadeIn(
+                        animationSpec =
+                            tween(280)
+                    )
+                ).togetherWith(
+                    slideOutHorizontally(
+                        animationSpec =
+                            tween(280),
+                        targetOffsetX = {
+                            -it / 3
+                        }
+                    ) + fadeOut(
+                        animationSpec =
+                            tween(180)
+                    )
+                )
+
+            } else {
+
+                (
+                    slideInHorizontally(
+                        animationSpec =
+                            tween(280),
+                        initialOffsetX = {
+                            -it
+                        }
+                    ) + fadeIn(
+                        animationSpec =
+                            tween(280)
+                    )
+                ).togetherWith(
+                    slideOutHorizontally(
+                        animationSpec =
+                            tween(280),
+                        targetOffsetX = {
+                            it / 3
+                        }
+                    ) + fadeOut(
+                        animationSpec =
+                            tween(180)
+                    )
+                )
+            }
+
+        },
+        label = "screen_transition"
+    ) { currentScreen ->
+
+        when (currentScreen) {
+
+            Screen.HOME -> {
+
+                HomeScreen(
+                    apps = apps,
+                    onOpenDrawer = {
+                        screen = Screen.DRAWER
+                    },
+                    onOpenLogin = {
+                        screen = Screen.LOGIN
+                    }
+                )
+            }
+
+            Screen.DRAWER -> {
+
+                AppDrawer(
+                    apps = apps,
+                    calculator = calculator,
+                    onLaunch = {
+                        activity.launchApp(it)
+                    },
+                    onCalculator = {
+                        screen = Screen.CALCULATOR
+                    },
+                    onBack = {
+                        screen = Screen.HOME
+                    }
+                )
+            }
+
+            Screen.CALCULATOR -> {
+
+                CalculatorScreen(
+                    onBack = {
+                        screen = Screen.DRAWER
+                    },
+                    onSecretCode = {
+                        screen = Screen.LOGIN
+                    }
+                )
+            }
+
+            Screen.LOGIN -> {
+
+                LoginScreen(
+                    activity = activity,
+                    onBack = {
+                        screen = Screen.CALCULATOR
+                    },
+                    onSuccess = {
+                        screen = Screen.HIDDEN
+                    },
+                    onReset = {
+                        screen = Screen.RESET
+                    }
+                )
+            }
+
+            Screen.RESET -> {
+
+                ResetPasswordScreen(
+                    activity = activity,
+                    onBack = {
+                        screen = Screen.LOGIN
+                    },
+                    onDone = {
+                        screen = Screen.LOGIN
+                    }
+                )
+            }
+
+            Screen.HIDDEN -> {
+
+                HiddenAppsScreen(
+                    apps = hiddenApps,
+                    onLaunch = {
+                        activity.launchApp(it)
+                    },
+                    onBack = {
+                        screen = Screen.HOME
+                    }
+                )
+            }
+        }
+    }
+}
+
+fun getAppsWithoutHidden(
+    activity: MainActivity
+): List<InstalledApp> {
+
+    val pm = activity.packageManager
+
+    val intent =
+        Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+
+    return pm.queryIntentActivities(
+        intent,
+        PackageManager.MATCH_ALL
+    )
+        .mapNotNull { info ->
+
+            val packageName =
+                info.activityInfo.packageName
+
+            if (
+                packageName ==
+                activity.packageName
+            ) {
+                return@mapNotNull null
+            }
+
+            val label =
+                info.loadLabel(pm)?.toString()
+                    ?: return@mapNotNull null
+
+            val drawable =
+                info.loadIcon(pm)
+
+            InstalledApp(
+                label = label,
+                packageName = packageName,
+                icon = drawableToBitmapStatic(
+                    drawable
+                )
+            )
+        }
+        .distinctBy {
+            it.packageName
+        }
+        .sortedBy {
+            it.label.lowercase()
+        )
+}
+
+fun drawableToBitmapStatic(
+    drawable: Drawable
+): Bitmap {
+
+    val width =
+        if (drawable.intrinsicWidth > 0)
+            drawable.intrinsicWidth
+        else 96
+
+    val height =
+        if (drawable.intrinsicHeight > 0)
+            drawable.intrinsicHeight
+        else 96
+
+    val bitmap =
+        Bitmap.createBitmap(
+            width,
+            height,
+            Bitmap.Config.ARGB_8888
+        )
+
+    val canvas = Canvas(bitmap)
+
+    drawable.setBounds(
+        0,
+        0,
+        width,
+        height
+    )
+
+    drawable.draw(canvas)
+
+    return bitmap
+}
+
+fun createCalculatorBitmap(): Bitmap {
+
+    val bitmap =
+        Bitmap.createBitmap(
+            96,
+            96,
+            Bitmap.Config.ARGB_8888
+        )
+
+    val canvas = Canvas(bitmap)
+
+    val paint =
+        android.graphics.Paint(
+            android.graphics.Paint.ANTI_ALIAS_FLAG
+        )
+
+    paint.color =
+        android.graphics.Color.rgb(
+            35,
+            35,
+            35
+        )
+
+    canvas.drawRoundRect(
+        4f,
+        4f,
+        92f,
+        92f,
+        18f,
+        18f,
+        paint
+    )
+
+    paint.color =
+        android.graphics.Color.WHITE
+
+    paint.textSize = 54f
+    paint.textAlign =
+        android.graphics.Paint.Align.CENTER
+
+    canvas.drawText(
+        "÷",
+        48f,
+        67f,
+        paint
+    )
+
+    return bitmap
+}
+
+@Composable
+fun HomeScreen(
+    apps: List<InstalledApp>,
+    onOpenDrawer: () -> Unit,
+    onOpenLogin: () -> Unit
+) {
+
+    var page by remember {
+        mutableStateOf(0)
+    }
+
+    val pageSize = 12
+
+    val pages =
+        if (apps.isEmpty()) {
+            listOf(emptyList())
+        } else {
+            apps.chunked(pageSize)
+        }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                horizontal = 18.dp,
+                vertical = 22.dp
+            )
+    ) {
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.SpaceBetween,
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+
+            Column {
+
+                LiveClock()
+
+                Spacer(
+                    modifier =
+                        Modifier.height(2.dp)
+                )
+
+                LiveDate()
+            }
+
+            TextButton(
+                onClick = onOpenLogin
+            ) {
+                Text(
+                    text = "●",
+                    fontSize = 22.sp
+                )
+            }
+        }
+
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+
+            if (
+                pages.isNotEmpty() &&
+                page < pages.size
+            ) {
+
+                LazyVerticalGrid(
+                    columns =
+                        GridCells.Fixed(4),
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(22.dp)
+                ) {
+
+                    items(
+                        items = pages[page],
+                        key = {
+                            it.packageName
+                        }
+                    ) { app ->
+
+                        AppIcon(
+                            app = app,
+                            onClick = {
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        PageIndicator(
+            count = pages.size,
+            current = page
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(12.dp)
+        )
+
+        Dock(
+            onDrawer = onOpenDrawer
+        )
+    }
+}
 
 @Composable
 fun PageIndicator(
     count: Int,
     current: Int
 ) {
+
     if (count <= 1) {
         return
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center
+        modifier =
+            Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            Arrangement.Center
     ) {
 
         repeat(count) { index ->
 
             Text(
-                text = if (index == current) {
-                    "●"
-                } else {
-                    "○"
-                },
+                text =
+                    if (index == current) {
+                        "●"
+                    } else {
+                        "○"
+                    },
                 fontSize = 11.sp,
-                modifier = Modifier.padding(
-                    horizontal = 3.dp
-                )
+                modifier =
+                    Modifier.padding(
+                        horizontal = 3.dp
+                    )
             )
         }
     }
 }
-
-
-/* =========================================================
-   APP ICON
-   ========================================================= */
 
 @Composable
 fun AppIcon(
     app: InstalledApp,
     onClick: () -> Unit
 ) {
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
                 onClick()
             },
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment =
+            Alignment.CenterHorizontally
     ) {
+
         Image(
-            bitmap = app.icon.asImageBitmap(),
-            contentDescription = app.label,
-            modifier = Modifier.size(58.dp)
+            bitmap =
+                app.icon.asImageBitmap(),
+            contentDescription =
+                app.label,
+            modifier =
+                Modifier
+                    .size(58.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            14.dp
+                        )
+                    )
         )
 
         Spacer(
-            modifier = Modifier.height(5.dp)
+            modifier =
+                Modifier.height(5.dp)
         )
 
         Text(
@@ -69,11 +769,6 @@ fun AppIcon(
     }
 }
 
-
-/* =========================================================
-   APP DRAWER
-   ========================================================= */
-
 @Composable
 fun AppDrawer(
     apps: List<InstalledApp>,
@@ -82,7 +777,9 @@ fun AppDrawer(
     onCalculator: () -> Unit,
     onBack: () -> Unit
 ) {
-    val drawerApps = listOf(calculator) + apps
+
+    val drawerApps =
+        listOf(calculator) + apps
 
     Column(
         modifier = Modifier
@@ -91,15 +788,19 @@ fun AppDrawer(
     ) {
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier =
+                Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.SpaceBetween,
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
 
             Text(
                 text = "برنامه‌ها",
                 fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight =
+                    FontWeight.Bold
             )
 
             OutlinedButton(
@@ -110,165 +811,38 @@ fun AppDrawer(
         }
 
         Spacer(
-            modifier = Modifier.height(20.dp)
+            modifier =
+                Modifier.height(20.dp)
         )
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            columns =
+                GridCells.Fixed(4),
+            horizontalArrangement =
+                Arrangement.spacedBy(8.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(20.dp)
         ) {
 
             items(
                 items = drawerApps,
-                key = { app ->
-                    app.packageName
+                key = {
+                    it.packageName
                 }
             ) { app ->
 
                 AppIcon(
                     app = app,
                     onClick = {
-                        if (app.isCalculator) {
+
+                        if (
+                            app.isCalculator
+                        ) {
                             onCalculator()
                         } else {
-                            onLaunch(app.packageName)
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-
-/* =========================================================
-   DOCK
-   ========================================================= */
-
-@Composable
-fun Dock(
-    onDrawer: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                MaterialTheme.colorScheme.surface
-            )
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.Center
-    ) {
-
-        DockButton(
-            text = "▦",
-            label = "برنامه‌ها",
-            onClick = onDrawer
-        )
-    }
-}
-
-
-/* =========================================================
-   DOCK BUTTON
-   ========================================================= */
-
-@Composable
-fun DockButton(
-    text: String,
-    label: String,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .clickable {
-                onClick()
-            }
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        Text(
-            text = text,
-            fontSize = 24.sp
-        )
-
-        Text(
-            text = label,
-            fontSize = 10.sp
-        )
-    }
-}
-
-
-/* =========================================================
-   LIVE CLOCK
-   ========================================================= */
-
-@Composable
-fun LiveClock() {
-
-    var time by remember {
-        mutableStateOf("")
-    }
-
-    LaunchedEffect(Unit) {
-
-        while (true) {
-
-            time = SimpleDateFormat(
-                "HH:mm",
-                Locale.getDefault()
-            ).format(Date())
-
-            delay(1000)
-        }
-    }
-
-    Text(
-        text = time,
-        fontSize = 44.sp,
-        fontWeight = FontWeight.Light
-    )
-}
-
-
-/* =========================================================
-   LIVE DATE
-   ========================================================= */
-
-@Composable
-fun LiveDate() {
-
-    var date by remember {
-        mutableStateOf("")
-    }
-
-    LaunchedEffect(Unit) {
-
-        while (true) {
-
-            date = SimpleDateFormat(
-                "EEEE، d MMMM yyyy",
-                Locale("fa")
-            ).format(Date())
-
-            delay(60000)
-        }
-    }
-
-    Text(
-        text = date,
-        fontSize = 14.sp
-    )
-}
-
-
-/* =========================================================
-   CALCULATOR
-   ========================================================= */
-
-@Composable
+                            onLaunch(
+                                app.packageName
+                   @Composable
 fun CalculatorScreen(
     onBack: () -> Unit,
     onSecretCode: () -> Unit
@@ -288,7 +862,9 @@ fun CalculatorScreen(
 
             "=" -> {
 
-                if (display == SECRET_CODE) {
+                if (
+                    display == SECRET_CODE
+                ) {
 
                     display = ""
                     onSecretCode()
@@ -296,7 +872,9 @@ fun CalculatorScreen(
                 } else {
 
                     display =
-                        calculateSimple(display)
+                        calculateSimple(
+                            display
+                        )
                 }
             }
 
@@ -306,12 +884,21 @@ fun CalculatorScreen(
         }
     }
 
-    val rows = listOf(
-        listOf("7", "8", "9", "÷"),
-        listOf("4", "5", "6", "×"),
-        listOf("1", "2", "3", "−"),
-        listOf("0", "C", "=", "+")
-    )
+    val rows =
+        listOf(
+            listOf(
+                "7", "8", "9", "÷"
+            ),
+            listOf(
+                "4", "5", "6", "×"
+            ),
+            listOf(
+                "1", "2", "3", "−"
+            ),
+            listOf(
+                "0", "C", "=", "+"
+            )
+        )
 
     Column(
         modifier = Modifier
@@ -320,14 +907,17 @@ fun CalculatorScreen(
     ) {
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier =
+                Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.SpaceBetween
         ) {
 
             Text(
                 text = "ماشین حساب",
                 fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight =
+                    FontWeight.Bold
             )
 
             OutlinedButton(
@@ -338,27 +928,32 @@ fun CalculatorScreen(
         }
 
         Spacer(
-            modifier = Modifier.height(30.dp)
+            modifier =
+                Modifier.height(30.dp)
         )
 
         Text(
-            text = if (display.isEmpty()) {
-                "0"
-            } else {
-                display
-            },
+            text =
+                if (display.isEmpty()) {
+                    "0"
+                } else {
+                    display
+                },
             fontSize = 38.sp,
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         Spacer(
-            modifier = Modifier.height(20.dp)
+            modifier =
+                Modifier.height(20.dp)
         )
 
         rows.forEach { row ->
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth(),
                 horizontalArrangement =
                     Arrangement.spacedBy(8.dp)
             ) {
@@ -369,9 +964,10 @@ fun CalculatorScreen(
                         onClick = {
                             press(value)
                         },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(60.dp)
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(60.dp)
                     ) {
 
                         Text(
@@ -383,15 +979,12 @@ fun CalculatorScreen(
             }
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier =
+                    Modifier.height(8.dp)
             )
         }
     }
 }
-
-/* =========================================================
-   CALCULATOR ENGINE
-   ========================================================= */
 
 fun calculateSimple(
     expression: String
@@ -403,16 +996,21 @@ fun calculateSimple(
 
     return try {
 
-        val normalized = expression
-            .replace("×", "*")
-            .replace("÷", "/")
-            .replace("−", "-")
+        val normalized =
+            expression
+                .replace("×", "*")
+                .replace("÷", "/")
+                .replace("−", "-")
 
         val operator =
-            listOf('+', '-', '*', '/')
-                .firstOrNull {
-                    normalized.contains(it)
-                }
+            listOf(
+                '+',
+                '-',
+                '*',
+                '/'
+            ).firstOrNull {
+                normalized.contains(it)
+            }
                 ?: return normalized
 
         val parts =
@@ -423,36 +1021,52 @@ fun calculateSimple(
         }
 
         val first =
-            parts[0].trim().toDouble()
+            parts[0]
+                .trim()
+                .toDouble()
 
         val second =
-            parts[1].trim().toDouble()
+            parts[1]
+                .trim()
+                .toDouble()
 
-        val result = when (operator) {
+        val result =
+            when (operator) {
 
-            '+' -> first + second
+                '+' ->
+                    first + second
 
-            '-' -> first - second
+                '-' ->
+                    first - second
 
-            '*' -> first * second
+                '*' ->
+                    first * second
 
-            '/' -> {
-                if (second == 0.0) {
-                    return "خطا"
+                '/' -> {
+
+                    if (second == 0.0) {
+                        return "خطا"
+                    }
+
+                    first / second
                 }
 
-                first / second
+                else ->
+                    return "خطا"
             }
 
-            else -> return "خطا"
-        }
+        when {
 
-        if (!result.isFinite()) {
-            "خطا"
-        } else if (result % 1.0 == 0.0) {
-            result.toLong().toString()
-        } else {
-            result.toString()
+            !result.isFinite() ->
+                "خطا"
+
+            result % 1.0 == 0.0 ->
+                result
+                    .toLong()
+                    .toString()
+
+            else ->
+                result.toString()
         }
 
     } catch (_: Exception) {
@@ -460,11 +1074,6 @@ fun calculateSimple(
         "خطا"
     }
 }
-
-
-/* =========================================================
-   LOGIN
-   ========================================================= */
 
 @Composable
 fun LoginScreen(
@@ -490,13 +1099,18 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .imePadding()
-            .padding(horizontal = 28.dp)
+            .padding(
+                horizontal = 28.dp
+            )
     ) {
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .align(
+                        Alignment.Center
+                    ),
             horizontalAlignment =
                 Alignment.CenterHorizontally
         ) {
@@ -504,11 +1118,13 @@ fun LoginScreen(
             Text(
                 text = "ورود",
                 fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight =
+                    FontWeight.Bold
             )
 
             Spacer(
-                modifier = Modifier.height(32.dp)
+                modifier =
+                    Modifier.height(32.dp)
             )
 
             OutlinedTextField(
@@ -517,7 +1133,8 @@ fun LoginScreen(
                     username = it
                     error = ""
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = {
                     Text("نام کاربری")
@@ -525,7 +1142,8 @@ fun LoginScreen(
             )
 
             Spacer(
-                modifier = Modifier.height(14.dp)
+                modifier =
+                    Modifier.height(14.dp)
             )
 
             OutlinedTextField(
@@ -534,7 +1152,8 @@ fun LoginScreen(
                     password = it
                     error = ""
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = {
                     Text("رمز عبور")
@@ -544,7 +1163,8 @@ fun LoginScreen(
             )
 
             Spacer(
-                modifier = Modifier.height(22.dp)
+                modifier =
+                    Modifier.height(22.dp)
             )
 
             Button(
@@ -566,11 +1186,14 @@ fun LoginScreen(
                             "نام کاربری یا رمز عبور اشتباه است"
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
                 shape =
-                    RoundedCornerShape(12.dp)
+                    RoundedCornerShape(
+                        12.dp
+                    )
             ) {
 
                 Text(
@@ -580,7 +1203,8 @@ fun LoginScreen(
             }
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier =
+                    Modifier.height(8.dp)
             )
 
             TextButton(
@@ -588,7 +1212,8 @@ fun LoginScreen(
             ) {
 
                 Text(
-                    text = "فراموشی رمز عبور",
+                    text =
+                        "فراموشی رمز عبور",
                     fontSize = 14.sp
                 )
             }
@@ -596,7 +1221,8 @@ fun LoginScreen(
             if (error.isNotEmpty()) {
 
                 Spacer(
-                    modifier = Modifier.height(10.dp)
+                    modifier =
+                        Modifier.height(10.dp)
                 )
 
                 Text(
@@ -612,20 +1238,20 @@ fun LoginScreen(
 
         TextButton(
             onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 18.dp)
+            modifier =
+                Modifier
+                    .align(
+                        Alignment.BottomCenter
+                    )
+                    .padding(
+                        bottom = 18.dp
+                    )
         ) {
 
             Text("بازگشت")
         }
     }
 }
-
-
-/* =========================================================
-   RESET PASSWORD
-   ========================================================= */
 
 @Composable
 fun ResetPasswordScreen(
@@ -651,26 +1277,30 @@ fun ResetPasswordScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .imePadding()
-            .padding(24.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .imePadding()
+                .padding(24.dp),
         horizontalAlignment =
             Alignment.CenterHorizontally
     ) {
 
         Spacer(
-            modifier = Modifier.height(55.dp)
+            modifier =
+                Modifier.height(55.dp)
         )
 
         Text(
             text = "بازنشانی رمز",
             fontSize = 27.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight =
+                FontWeight.Bold
         )
 
         Spacer(
-            modifier = Modifier.height(24.dp)
+            modifier =
+                Modifier.height(24.dp)
         )
 
         Text(
@@ -679,7 +1309,8 @@ fun ResetPasswordScreen(
         )
 
         Spacer(
-            modifier = Modifier.height(12.dp)
+            modifier =
+                Modifier.height(12.dp)
         )
 
         OutlinedTextField(
@@ -688,7 +1319,8 @@ fun ResetPasswordScreen(
                 answer = it
                 message = ""
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
             label = {
                 Text("پاسخ")
             },
@@ -696,7 +1328,8 @@ fun ResetPasswordScreen(
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier =
+                Modifier.height(10.dp)
         )
 
         OutlinedTextField(
@@ -705,7 +1338,8 @@ fun ResetPasswordScreen(
                 newPassword = it
                 message = ""
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
             label = {
                 Text("رمز جدید")
             },
@@ -715,7 +1349,8 @@ fun ResetPasswordScreen(
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier =
+                Modifier.height(10.dp)
         )
 
         OutlinedTextField(
@@ -724,7 +1359,8 @@ fun ResetPasswordScreen(
                 confirmPassword = it
                 message = ""
             },
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
             label = {
                 Text("تکرار رمز")
             },
@@ -734,7 +1370,8 @@ fun ResetPasswordScreen(
         )
 
         Spacer(
-            modifier = Modifier.height(16.dp)
+            modifier =
+                Modifier.height(16.dp)
         )
 
         Button(
@@ -777,11 +1414,14 @@ fun ResetPasswordScreen(
                 Modifier.fillMaxWidth()
         ) {
 
-            Text("ذخیره رمز جدید")
+            Text(
+                "ذخیره رمز جدید"
+            )
         }
 
         Spacer(
-            modifier = Modifier.height(8.dp)
+            modifier =
+                Modifier.height(8.dp)
         )
 
         OutlinedButton(
@@ -794,7 +1434,8 @@ fun ResetPasswordScreen(
         if (message.isNotEmpty()) {
 
             Spacer(
-                modifier = Modifier.height(12.dp)
+                modifier =
+                    Modifier.height(12.dp)
             )
 
             Text(
@@ -803,9 +1444,10 @@ fun ResetPasswordScreen(
                     MaterialTheme
                         .colorScheme
                         .error
-            )/* =========================================================
-   HIDDEN APPS
-   ========================================================= */
+            )
+        }
+    }
+}
 
 @Composable
 fun HiddenAppsScreen(
@@ -815,26 +1457,27 @@ fun HiddenAppsScreen(
 ) {
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(18.dp)
     ) {
 
         Row(
             modifier =
                 Modifier.fillMaxWidth(),
-
             horizontalArrangement =
                 Arrangement.SpaceBetween,
-
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
 
             Text(
-                text = "برنامه‌های مخفی",
+                text =
+                    "برنامه‌های مخفی",
                 fontSize = 25.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight =
+                    FontWeight.Bold
             )
 
             OutlinedButton(
@@ -846,7 +1489,8 @@ fun HiddenAppsScreen(
         }
 
         Spacer(
-            modifier = Modifier.height(20.dp)
+            modifier =
+                Modifier.height(20.dp)
         )
 
         if (apps.isEmpty()) {
@@ -854,7 +1498,6 @@ fun HiddenAppsScreen(
             Box(
                 modifier =
                     Modifier.fillMaxSize(),
-
                 contentAlignment =
                     Alignment.Center
             ) {
@@ -870,18 +1513,16 @@ fun HiddenAppsScreen(
             LazyVerticalGrid(
                 columns =
                     GridCells.Fixed(3),
-
                 horizontalArrangement =
                     Arrangement.spacedBy(12.dp),
-
                 verticalArrangement =
                     Arrangement.spacedBy(20.dp)
             ) {
 
                 items(
                     items = apps,
-                    key = { app ->
-                        app.packageName
+                    key = {
+                        it.packageName
                     }
                 ) { app ->
 
@@ -898,7 +1539,3 @@ fun HiddenAppsScreen(
         }
     }
 }
-        }
-    }
-}
-
